@@ -77,7 +77,7 @@ $ khook apply -f bootstrap.yaml
 ## Try it in 60 seconds
 
 ```bash
-go build -o bin/khook ./cmd/khook
+make build   # or during development: go build -o bin/khook ./cmd/khook
 k3d cluster create dev
 bin/khook apply -f examples/simple.yaml \
   --set NAMESPACE_NAME_TO_CREATE=demo \

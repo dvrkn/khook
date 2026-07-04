@@ -41,6 +41,14 @@ Layout: `cmd/khook` (main), `internal/spec` (types/parse/validate/variables),
   host `exec:` step — `job:` is the escape hatch.
 - Dev/test platform: **k3d** (E2E tests spin up k3d clusters).
 - One binary, zero runtime deps: SDKs only, never shell out to kubectl/helm.
+- Binary size: release builds go through `make build` (`CGO_ENABLED=0`,
+  `-trimpath`, `-ldflags "-s -w"` + version stamping) → ~60 MB. The floor is
+  structural: helm v4's `pkg/action`/`pkg/kube` link the full typed
+  `k8s.io/client-go` clientset and all of `k8s.io/api`, and `text/template`
+  (helm's render engine) calls `reflect.MethodByName`, which disables linker
+  method pruning globally. Evaluated and rejected (2026-07-03): stubbing
+  helm's WASM-plugin runtime + SQL storage driver via `go build -overlay`
+  (only ~3 MB saved) and UPX compression.
 
 ## Conventions
 
