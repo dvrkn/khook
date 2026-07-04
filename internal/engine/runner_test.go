@@ -195,6 +195,45 @@ func TestRunCanceledContextSkipsSteps(t *testing.T) {
 	}
 }
 
+func TestRunEmitsEvents(t *testing.T) {
+	rec := &recorder{fail: map[string]int{"flaky": 1, "broken": -1}}
+	retries := 1
+	flaky := step("flaky")
+	flaky.Retries = &retries
+	broken := step("broken")
+	dependent := step("dependent", "broken")
+
+	var mu sync.Mutex
+	events := map[string][]EventKind{}
+	r := newTestRunner(spec.Defaults{OnError: spec.OnErrorContinue}, rec.exec)
+	r.OnEvent = func(ev Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		events[ev.Step.Name] = append(events[ev.Step.Name], ev.Kind)
+		if ev.Kind == EventDone && ev.Result == nil {
+			t.Errorf("done event for %s has no result", ev.Step.Name)
+		}
+	}
+	if _, err := r.Run(context.Background(), steps(flaky, broken, dependent)); err == nil {
+		t.Fatal("want run error")
+	}
+
+	want := map[string][]EventKind{
+		// fails once, retried, succeeds
+		"flaky": {EventRunning, EventAttemptFailed, EventRunning, EventDone},
+		// no retries configured: one attempt, failed
+		"broken": {EventRunning, EventAttemptFailed, EventDone},
+		// skipped: done only
+		"dependent": {EventDone},
+	}
+	for name, kinds := range want {
+		got := events[name]
+		if fmt.Sprint(got) != fmt.Sprint(kinds) {
+			t.Errorf("%s events = %v, want %v", name, got, kinds)
+		}
+	}
+}
+
 func TestRunLevelParallelism(t *testing.T) {
 	var mu sync.Mutex
 	running := 0

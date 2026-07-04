@@ -30,9 +30,22 @@ default fails validation, reporting **all** missing variables at once.
 ### `khook apply -f spec.yaml`
 
 Parses, validates, resolves the DAG, then executes steps in parallel levels
-against the cluster. Prints one log line per state change and a final summary
-table (step, type, status `ok`/`failed`/`skipped`, attempts, duration,
-detail — the error for failures, the reason for skips).
+against the cluster. Output depends on where it runs:
+
+- **Interactive terminal** (stdout is a TTY): one live status line per step
+  in DAG order — `pending → running → ok/failed/skipped` — with spinner,
+  elapsed time, and retry attempt, redrawn in place. Full error details for
+  failed steps print after the run. Step-level logging is silenced (raised to
+  `warn`) so it doesn't garble the display; pass `--log-level` explicitly to
+  override. `NO_COLOR` disables colors; `TERM=dumb` disables live rendering.
+- **Non-interactive** (piped, CI): one log line per state change and a final
+  summary table (step, type, status `ok`/`failed`/`skipped`, attempts,
+  duration, detail — the error for failures, the reason for skips).
+- **`-o, --output json`**: instead of the table, the final results print as
+  one JSON document on stdout — run `name`, run `status` (`ok`/`failed`),
+  and per-step `name`, `type`, `status`, `attempts`, `durationMs`, `error`,
+  `skipReason`. Logs still stream to stderr, so `khook apply -o json 2>/dev/null`
+  is clean JSON for CI. Exit codes are unchanged.
 
 ### `khook plan -f spec.yaml`
 
@@ -116,5 +129,7 @@ success (`ignoreNotFound` defaults true), and the `skipIfInstalled` /
 ## Logging
 
 Structured `log/slog` output. `--log-format json` emits one JSON object per
-line for machine consumption; the summary table always goes to stdout,
-logs to stderr.
+line for machine consumption; the summary (table, JSON results, or live
+progress lines) goes to stdout, logs to stderr. When `apply` renders live
+progress on a TTY, the default log level is raised to `warn` unless
+`--log-level` was given explicitly.

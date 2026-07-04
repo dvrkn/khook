@@ -135,8 +135,10 @@ diff_out="$(simple_spec plan --diff)"
 grep -q "diff: no changes" <<<"${diff_out}" || fail "plan --diff on an unchanged spec should report no changes, got: ${diff_out}"
 grep -q "diff: unavailable" <<<"${diff_out}" && fail "plan --diff should assess every step, got: ${diff_out}"
 
-log "khook apply examples/simple.yaml (second run: idempotent re-apply)"
-apply_simple
+log "khook apply examples/simple.yaml (second run: idempotent re-apply, --output json)"
+json_out="$(simple_spec apply --output json)"
+grep -q '"status": "ok"' <<<"${json_out}" || fail "apply --output json should report status ok, got: ${json_out}"
+grep -q '"name": "ingress-nginx"' <<<"${json_out}" || fail "apply --output json should list per-step results, got: ${json_out}"
 
 revision="$(k -n "${INGRESS_NS}" get secret -l owner=helm,name=ingress-nginx \
   -o jsonpath='{.items[*].metadata.labels.version}' | tr ' ' '\n' | sort -n | tail -1)"

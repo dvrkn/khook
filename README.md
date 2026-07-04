@@ -84,10 +84,13 @@ bin/khook apply -f examples/simple.yaml \
 ```
 
 ```text
-STEP              TYPE   STATUS  ATTEMPTS  DURATION  DETAIL
-create-namespace  apply  ok      1         18ms
-ingress-nginx     helm   ok      1         21.457s
+✓ create-namespace (apply)  18ms
+✓ ingress-nginx (helm)  21.457s
 ```
+
+On a terminal each step is a live status line (pending → running →
+ok/failed/skipped, with spinner and elapsed time). In CI you get plain logs
+and a summary table instead, or `--output json` for machine-readable results.
 
 Run it again — everything converges, nothing breaks. That's the point.
 

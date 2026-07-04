@@ -26,23 +26,18 @@ the [README](README.md); when an item here ships, it moves there.
 
 ---
 
-## Phase 1 — Operator UX (make it pleasant to run)
-
-*Goal: the day-2 experience of running bootstraps interactively.*
-
-- [ ] **Live progress output**: interactive per-step status lines
-      (pending → running → ok/failed/skipped) instead of raw log lines;
-      `--output json` for the final results in CI.
-- [ ] **Spec composability**: multiple `-f` files / a directory of specs merged in
-      order; `needs` across files.
-
-## Phase 2 — DSL v2 (make the spec expressive enough for real clusters)
+## Phase 1 — DSL v2 (make the spec expressive enough for real clusters)
 
 *Goal: cover the real bootstrap cases (`examples/real-case.yaml` and beyond)
 without escape hatches.*
 
 - [ ] **Conditionals**: `when:` expression on steps (variable-based, e.g.
       `when: ${ENABLE_ARGOCD} == "true"`), so one spec serves many environments.
+- [ ] **Spec composability**: multiple `-f` files / a directory of specs merged
+      in order; `needs` across files. Deliberately deferred until conditionals
+      and variable sources settle — merge semantics (`defaults:` conflicts,
+      duplicate step names, cross-file validation) depend on both, and `when:`
+      reduces the need to split specs per environment in the first place.
 - [ ] **Richer variable sources**: files and cloud secrets (AWS SSM / Secrets
       Manager) — pluggable resolver chain.
 - [ ] **Helm depth**: OCI registry charts (`oci://`), local chart paths/tarballs,
@@ -59,7 +54,7 @@ without escape hatches.*
 - [ ] **apiVersion `v1` freeze**: publish the JSON schema (raw GitHub URL + JSON
       Schema Store) so editors autocomplete via `# yaml-language-server`.
 
-## Phase 3 — Idempotency, state & resume (make re-runs first-class)
+## Phase 2 — Idempotency, state & resume (make re-runs first-class)
 
 *Goal: a failed bootstrap at step 7/12 is a resume, not a redo.*
 
@@ -74,7 +69,7 @@ without escape hatches.*
 - [ ] **`status` subcommand**: read the state record, show last run, per-step outcomes.
 - [ ] **`destroy` (stretch)**: reverse-topological teardown for dev clusters.
 
-## Phase 4 — Delivery & integrations (meet users where clusters are created)
+## Phase 3 — Delivery & integrations (meet users where clusters are created)
 
 *Goal: trivially runnable from every place a cluster gets created.*
 
@@ -91,7 +86,7 @@ without escape hatches.*
       auth (run as a Job inside the cluster it bootstraps).
 - [ ] **GitHub Action**: `uses: dvrkn/khook-action` — validate on PR, apply on merge.
 
-## Phase 5 — Observability & scale (nice-to-have, demand-driven)
+## Phase 4 — Observability & scale (nice-to-have, demand-driven)
 
 - [ ] OpenTelemetry traces (one span per step — DAG visualizes for free in any
       trace viewer)
@@ -110,18 +105,17 @@ without escape hatches.*
 
 ## Suggested order of attack
 
-1. Phase 1's progress output — biggest day-to-day UX win for the effort.
-2. Phase 2 driven by real specs: take `real-case.yaml`, remove every workaround it
+1. Phase 1 driven by real specs: take `real-case.yaml`, remove every workaround it
    needed, and let that dictate which DSL features land first.
-3. Phase 3 before advertising widely — "safe to re-run, resumes on failure" is the
+2. Phase 2 before advertising widely — "safe to re-run, resumes on failure" is the
    core promise of a bootstrapper.
-4. Phases 4–5 as adoption demands (CI early, though — it is cheap and guards
+3. Phases 3–4 as adoption demands (CI early, though — it is cheap and guards
    everything else).
 
-## Open questions (decide before Phase 2)
+## Open questions (decide before Phase 1)
 
 - **Multi-cluster in one spec**: out of scope, or a `targets:` concept later?
 - **Secrets in specs**: recommend External Secrets pattern only, or support
-  first-class secret variable sources (SSM/SM) in Phase 2?
+  first-class secret variable sources (SSM/SM) in Phase 1?
 - **Lambda payload vs S3**: specs can outgrow the 256 KB invoke limit — accept an
   S3 URI as the spec source?

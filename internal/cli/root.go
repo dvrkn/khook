@@ -35,6 +35,9 @@ type rootOptions struct {
 	kubecontext string
 	logLevel    string
 	logFormat   string
+	// logLevelSet records whether --log-level was given explicitly (the
+	// interactive progress display quiets logging only when it was not).
+	logLevelSet bool
 
 	log *slog.Logger
 }
@@ -53,6 +56,7 @@ func NewRootCommand() *cobra.Command {
 				return validationErr(err)
 			}
 			opts.log = log
+			opts.logLevelSet = cmd.Root().PersistentFlags().Changed("log-level")
 			slog.SetDefault(log)
 			return nil
 		},
