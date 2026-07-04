@@ -25,6 +25,7 @@ const (
 	ActionConfigure Action = "configure" // apply: at least one object already exists
 	ActionDelete    Action = "delete"    // delete: matching resources exist
 	ActionRestart   Action = "restart"   // rollout restart
+	ActionRun       Action = "run"       // job: creates (or replaces) the Job and runs it
 	ActionWait      Action = "wait"      // wait / rollout status: condition not met yet
 	ActionSkip      Action = "skip"      // a skipIf* field or a false when: short-circuits the step
 	ActionNone      Action = "no-op"     // nothing to do (already absent / already satisfied)
@@ -53,6 +54,8 @@ func (e *Executor) Plan(ctx context.Context, step *spec.Step) Assessment {
 		return e.planWait(ctx, step)
 	case step.Rollout != nil:
 		return e.planRollout(ctx, step)
+	case step.Job != nil:
+		return e.planJob(ctx, step)
 	}
 	return Assessment{Action: ActionUnknown, Detail: "step has no action"}
 }

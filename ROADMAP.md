@@ -46,10 +46,19 @@ without escape hatches.*
       + wait in one step), kustomize source (`sigs.k8s.io/kustomize` comes in
       transitively with the Helm SDK anyway), `wait.for: jsonpath=...`.
 - [ ] **New step types** (see the coverage matrix in `docs/dsl.md`):
-      - `job`: run a container to completion in-cluster (escape hatch for
-        anything we don't model — replaces "shell scripts" in the cloud-init analogy)
       - `label:` / `annotate:` (e.g. tagging nodes/namespaces during bootstrap)
       - `scale:` (e.g. `kubectl scale` shorthand for sizing system workloads)
+- [ ] **`job` output capture**: let a `job` (shipped without it) publish small
+      string values — read from the container termination message as a flat
+      JSON map — that later steps consume in op field values, e.g.
+      `${outputs.<step>.<key>}`. This is *late-bound* data, so it fights the
+      load-time architecture (variables substitute textually before parsing;
+      `when:` and `plan` are decided up front): it needs per-step
+      re-substitution at execution time, must be forbidden in `when:` /
+      `needs:` / anything structural, requires a `needs` path to the producing
+      step (validatable at load), and consumer steps degrade to `unknown` in
+      `plan`. Design carefully before building; the `${outputs.*}` syntax is
+      effectively reserved for it.
 - [ ] **apiVersion `v1` freeze**: publish the JSON schema (raw GitHub URL + JSON
       Schema Store) so editors autocomplete via `# yaml-language-server`.
 

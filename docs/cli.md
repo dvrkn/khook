@@ -60,6 +60,7 @@ live cluster (reads only; plan never mutates anything):
 | `delete:` | `delete` (named object or selector match count) or `no-op` (already absent) |
 | `wait:` | `no-op` when the condition already holds, `wait` otherwise (shows how many objects currently match) |
 | `rollout:` | `restart`, `no-op` (rollout already complete), or `wait` |
+| `job:` | `run` (first run or replacing a previous Job) or `skip` (`skipIfSucceeded`) |
 
 A step whose `when:` condition is false is reported `skip` (with the
 condition) without touching the cluster — `--offline` shows it too. Steps
@@ -78,8 +79,8 @@ would change something (`install`/`upgrade`/`create`/`configure`):
 - `helm:` steps dry-run render the chart (server dry-run: real cluster
   capabilities, nothing stored) and diff it against the manifest of the
   release's last revision. An install diffs against empty — all additions.
-- `delete:` / `wait:` / `rollout:` steps have no rendered objects; the plan
-  line already says what happens.
+- `delete:` / `wait:` / `rollout:` / `job:` steps have no rendered objects;
+  the plan line already says what happens.
 
 An unchanged step prints `diff: no changes` — a re-run of an already-applied
 spec shows no diffs at all. A step whose diff can't be computed (chart
@@ -127,8 +128,9 @@ steps not yet started are reported skipped.
 
 Re-running the same spec is safe: `helm:` upgrades instead of installing,
 `apply:` patches existing resources, `delete:` treats absent resources as
-success (`ignoreNotFound` defaults true), and the `skipIfInstalled` /
-`skipIfExists` fields short-circuit steps whose outcome already holds.
+success (`ignoreNotFound` defaults true), `job:` replaces the previous run's
+Job, and the `skipIfInstalled` / `skipIfExists` / `skipIfSucceeded` fields
+short-circuit steps whose outcome already holds.
 
 ## Logging
 

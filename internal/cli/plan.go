@@ -134,7 +134,7 @@ func printStepDiff(ctx context.Context, out io.Writer, executor *ops.Executor, s
 func summarizePlan(counts map[ops.Action]int) string {
 	order := []ops.Action{
 		ops.ActionInstall, ops.ActionUpgrade, ops.ActionCreate, ops.ActionConfigure,
-		ops.ActionDelete, ops.ActionRestart, ops.ActionWait,
+		ops.ActionDelete, ops.ActionRestart, ops.ActionRun, ops.ActionWait,
 		ops.ActionSkip, ops.ActionNone, ops.ActionUnknown,
 	}
 	var parts []string
@@ -176,6 +176,8 @@ func describeStep(step *spec.Step) string {
 		} else {
 			desc = "status " + step.Rollout.Status
 		}
+	case step.Job != nil:
+		desc = fmt.Sprintf("run image %s -> namespace %s", step.Job.Image, step.Job.TargetNamespace())
 	}
 	if len(step.Needs) > 0 {
 		desc += fmt.Sprintf("  (needs: %s)", strings.Join(step.Needs, ", "))

@@ -54,7 +54,7 @@ steps:
     retryDelay: 30s       # optional, overrides defaults
     onError: continue     # optional, overrides defaults
     helm: { ... }         # exactly ONE action key per step:
-                          #   helm | apply | delete | wait | rollout
+                          #   helm | apply | delete | wait | rollout | job
 ```
 
 The action key determines the step type — there is no `type:` field. Zero or
@@ -233,6 +233,51 @@ rollout:
   namespace: kube-system
 ```
 
+## `job:` — run a container to completion
+
+The escape hatch: anything the DSL does not model runs as a `batch/v1` Job —
+the "shell script" slot of the cloud-init analogy. khook creates the Job,
+waits for it to finish (bounded by the step `timeout`), and on failure
+surfaces the pod's last log lines in the step error.
+
+| Field | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `image` | string | yes | | container image to run |
+| `command` | list | no | image entrypoint | container command (entrypoint override) |
+| `args` | list | no | | container args |
+| `env` | map | no | | environment variables (`NAME: value`) |
+| `namespace` | string | no | `default` | namespace the Job runs in |
+| `createNamespace` | bool | no | `false` | create `namespace` if missing |
+| `serviceAccount` | string | no | namespace default | ServiceAccount for the pod |
+| `skipIfSucceeded` | bool | no | `false` | skip (success) if this step's Job already completed successfully |
+
+```yaml
+job:
+  image: public.ecr.aws/aws-cli/aws-cli:2.17.0
+  command: ["sh", "-c"]
+  args: ["aws sts get-caller-identity"]
+  env:
+    AWS_REGION: us-east-1
+  namespace: kube-system
+  serviceAccount: bootstrap-admin
+```
+
+Semantics:
+
+- The Job is named after the step and labeled
+  `app.kubernetes.io/managed-by: khook`. A same-named Job **not** carrying
+  that label is an error — khook never replaces a Job it does not own.
+- Each run **replaces** the previous run's Job (delete, wait for it to be
+  gone, recreate) unless `skipIfSucceeded` short-circuits.
+- Retries follow the step's `retries`: the Job is created with
+  `backoffLimit: 0` and `restartPolicy: Never`, so every khook attempt is a
+  fresh Job rather than an in-cluster pod restart.
+- The step `timeout` is also set as the Job's `activeDeadlineSeconds`, so a
+  Job khook stops waiting on cannot keep running in-cluster.
+
+**(roadmap)** output capture — a `job` publishing small values that later
+steps consume.
+
 ## Command coverage matrix
 
 What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
@@ -249,6 +294,7 @@ What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
 | `kubectl wait --for=condition=...` | `wait:` | **v1 core** |
 | `kubectl rollout restart/status` | `rollout:` | **v1 core** |
 | `kubectl create namespace` | `createNamespace: true` / `apply:` | **v1 core** |
+| arbitrary in-cluster commands | `job:` (container to completion) | **v1 core** |
 | `helm install oci://...` / local chart | `helm.chart: oci://...` / path | roadmap P2 |
 | `helm uninstall` / `rollback` | `helm.uninstall` (shape TBD) | roadmap P2 |
 | `kubectl apply -k` (kustomize) | `apply.kustomize` (shape TBD) | roadmap P2 |
@@ -256,7 +302,6 @@ What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
 | `kubectl label` / `annotate` | `label:` / `annotate:` (shape TBD) | roadmap P2 |
 | `kubectl scale` | `scale:` (shape TBD) | roadmap P2 |
 | `kubectl wait --for=jsonpath=` | `wait.for: jsonpath=...` | roadmap P2 |
-| arbitrary in-cluster commands | `job:` (container to completion) | roadmap P2 |
 | `kubectl exec` / `cp` / `port-forward` | — interactive, out of scope | non-goal |
 | `kubectl get/describe` as output | — read paths belong to `plan`/`status` | non-goal |
 
@@ -268,7 +313,7 @@ they are not re-litigated:
 
 - **`kind: Khook`** (was `ClusterBootstrap`) with `apiVersion: khook.dvrkn.com/v1`.
 - **Action key implies the type** — no `type:` discriminator. A step has exactly
-  one of `helm:`, `apply:`, `delete:`, `wait:`, `rollout:` (schema: oneOf).
+  one action key (`helm:`, `apply:`, `delete:`, ... — schema: oneOf).
 - **`steps:` / `needs:`** replace v0's `operations:` / `dependsOn:`.
 - **Top-level `defaults:`** replaces `config.defaults`.
 - **v0's `exec` grab-bag is gone** — `wait:` and `rollout:` are first-class.

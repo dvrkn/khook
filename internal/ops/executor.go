@@ -1,5 +1,5 @@
-// Package ops implements the executors for the five step types. Everything
-// goes through the Kubernetes and Helm SDKs — khook never shells out.
+// Package ops implements the executors for the step types. Everything goes
+// through the Kubernetes and Helm SDKs — khook never shells out.
 package ops
 
 import (
@@ -47,6 +47,8 @@ func (e *Executor) Execute(ctx context.Context, step *spec.Step) error {
 		return e.runWait(ctx, step)
 	case step.Rollout != nil:
 		return e.runRollout(ctx, step)
+	case step.Job != nil:
+		return e.runJob(ctx, step)
 	}
 	return fmt.Errorf("step %q has no action", step.Name)
 }

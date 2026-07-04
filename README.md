@@ -96,7 +96,7 @@ Run it again — everything converges, nothing breaks. That's the point.
 
 ## How it works
 
-A spec is a set of **steps**, each with exactly one action. Five verbs cover
+A spec is a set of **steps**, each with exactly one action. Six verbs cover
 the bootstrap surface:
 
 | Verb | What it does | Instead of |
@@ -106,6 +106,7 @@ the bootstrap surface:
 | `delete:` | remove resources by manifest or selector | `kubectl delete` |
 | `wait:` | block until a condition holds (or gone) | `kubectl wait` + `sleep`-and-pray |
 | `rollout:` | restart / await workload rollouts | `kubectl rollout restart/status` |
+| `job:` | run a container to completion in-cluster | one-off `kubectl run` / bash scripts |
 
 `${VAR}` / `${VAR:-default}` substitution and `when:` conditionals
 ([CEL](https://cel.dev) expressions over the variables, e.g.

@@ -1,5 +1,6 @@
 # E2E coverage for the step types examples/simple.yaml does not exercise:
-# wait, rollout (restart + status), and delete (by selector and kind/name).
+# wait, rollout (restart + status), delete (by selector and kind/name), and
+# job.
 apiVersion: khook.dvrkn.com/v1
 kind: Khook
 metadata:
@@ -63,6 +64,18 @@ steps:
       on: pods
       namespace: ${OPS_NAMESPACE}
       selector: app=echo
+
+  # job coverage — env is passed through, and a non-zero exit must fail the
+  # step (the e2e asserts .status.succeeded afterwards).
+  - name: hello-job
+    needs: [workload]
+    job:
+      image: busybox:1.36
+      namespace: ${OPS_NAMESPACE}
+      command: ["sh", "-c"]
+      args: ['echo "khook says: $GREETING"; test "$GREETING" = bootstrap-ok']
+      env:
+        GREETING: bootstrap-ok
 
   - name: delete-configmap
     needs: [workload]

@@ -87,13 +87,13 @@ func Validate(doc *Document) error {
 
 		switch step.actionCount() {
 		case 0:
-			addf("%s: needs exactly one action key (helm, apply, delete, wait, rollout), got none", where)
+			addf("%s: needs exactly one action key (helm, apply, delete, wait, rollout, job), got none", where)
 		case 1:
 			if err := validateAction(step); err != nil {
 				addf("%s: %v", where, err)
 			}
 		default:
-			addf("%s: needs exactly one action key (helm, apply, delete, wait, rollout), got %d", where, step.actionCount())
+			addf("%s: needs exactly one action key (helm, apply, delete, wait, rollout, job), got %d", where, step.actionCount())
 		}
 	}
 
@@ -132,6 +132,8 @@ func validateAction(step *Step) error {
 		return validateWait(step.Wait)
 	case step.Rollout != nil:
 		return validateRollout(step.Rollout)
+	case step.Job != nil:
+		return validateJob(step.Job)
 	}
 	return nil
 }
@@ -225,6 +227,18 @@ func validateRollout(op *RolloutOp) error {
 	}
 	if _, _, err := ParseWorkloadRef(ref); err != nil {
 		return fmt.Errorf("rollout: %w", err)
+	}
+	return nil
+}
+
+func validateJob(op *JobOp) error {
+	if op.Image == "" {
+		return errors.New("job: image is required")
+	}
+	for key := range op.Env {
+		if key == "" {
+			return errors.New("job: env keys must not be empty")
+		}
 	}
 	return nil
 }

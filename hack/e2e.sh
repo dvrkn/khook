@@ -9,7 +9,7 @@
 #      objects, then khook apply examples/simple.yaml, asserts the resources exist
 #   5. cluster-aware plan predicts upgrade and plan --diff reports no changes,
 #      then re-applies the same spec to assert idempotency (helm upgrade path)
-#   6. khook apply hack/testdata/e2e-ops.yaml (wait / rollout / delete coverage)
+#   6. khook apply hack/testdata/e2e-ops.yaml (wait / rollout / delete / job coverage)
 #
 # Usage:
 #   ./hack/e2e.sh                 # full run, cluster deleted at the end
@@ -148,13 +148,17 @@ status="$(k -n "${INGRESS_NS}" get secret "sh.helm.release.v1.ingress-nginx.v${r
   -o jsonpath='{.metadata.labels.status}')"
 [[ "${status}" == "deployed" ]] || fail "helm release status after re-apply: ${status}, want deployed"
 
-# --- wait / rollout / delete / when coverage ----------------------------------
-log "khook apply hack/testdata/e2e-ops.yaml (wait/rollout/delete/when)"
+# --- wait / rollout / delete / job / when coverage ----------------------------
+log "khook apply hack/testdata/e2e-ops.yaml (wait/rollout/delete/job/when)"
 "${KHOOK}" apply \
   --kubeconfig "${KUBECONFIG_FILE}" \
   -f "${REPO_ROOT}/hack/testdata/e2e-ops.yaml" \
   --set OPS_NAMESPACE="${OPS_NS}"
 
+succeeded="$(k -n "${OPS_NS}" get job hello-job -o jsonpath='{.status.succeeded}')"
+[[ "${succeeded}" == "1" ]] || fail "job hello-job should have succeeded, got '${succeeded}'"
+managed="$(k -n "${OPS_NS}" get job hello-job -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}')"
+[[ "${managed}" == "khook" ]] || fail "job hello-job should carry the managed-by label, got '${managed}'"
 k -n "${OPS_NS}" get configmap doomed >/dev/null 2>&1 && fail "configmap doomed should have been deleted"
 k -n "${OPS_NS}" get deployment echo >/dev/null 2>&1 && fail "deployment echo should have been deleted"
 k -n "${OPS_NS}" get configmap conditional-extra >/dev/null 2>&1 && fail "configmap conditional-extra should not exist (when: is false)"

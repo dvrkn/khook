@@ -162,6 +162,22 @@ func TestValidate(t *testing.T) {
 			},
 			"expected deployment/",
 		},
+		{
+			"job missing image",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Job = &JobOp{}
+			},
+			"image is required",
+		},
+		{
+			"job empty env key",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Job = &JobOp{Image: "alpine", Env: map[string]string{"": "x"}}
+			},
+			"env keys",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

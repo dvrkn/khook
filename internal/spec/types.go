@@ -76,7 +76,7 @@ var (
 )
 
 // Step is one node of the DAG. Exactly one action key (Helm, Apply, Delete,
-// Wait, Rollout) must be set.
+// Wait, Rollout, Job) must be set.
 type Step struct {
 	Name  string   `json:"name"`
 	Needs []string `json:"needs,omitempty"`
@@ -93,6 +93,7 @@ type Step struct {
 	Delete  *DeleteOp  `json:"delete,omitempty"`
 	Wait    *WaitOp    `json:"wait,omitempty"`
 	Rollout *RolloutOp `json:"rollout,omitempty"`
+	Job     *JobOp     `json:"job,omitempty"`
 
 	// Excluded records a false When result. Set by Parse, read by the
 	// engine and plan; never part of the spec itself.
@@ -113,6 +114,8 @@ func (s *Step) Type() string {
 		return "wait"
 	case s.Rollout != nil:
 		return "rollout"
+	case s.Job != nil:
+		return "job"
 	}
 	return ""
 }
@@ -120,7 +123,7 @@ func (s *Step) Type() string {
 // actionCount returns how many action keys are set (validation requires 1).
 func (s *Step) actionCount() int {
 	n := 0
-	for _, set := range []bool{s.Helm != nil, s.Apply != nil, s.Delete != nil, s.Wait != nil, s.Rollout != nil} {
+	for _, set := range []bool{s.Helm != nil, s.Apply != nil, s.Delete != nil, s.Wait != nil, s.Rollout != nil, s.Job != nil} {
 		if set {
 			n++
 		}
@@ -268,4 +271,26 @@ type RolloutOp struct {
 	Restart   string `json:"restart,omitempty"`
 	Status    string `json:"status,omitempty"`
 	Namespace string `json:"namespace"`
+}
+
+// JobOp runs a container image to completion as a batch/v1 Job — the escape
+// hatch for anything the DSL does not model. The Job is named after the step;
+// each run replaces the previous Job of that name.
+type JobOp struct {
+	Image           string            `json:"image"`
+	Command         []string          `json:"command,omitempty"`
+	Args            []string          `json:"args,omitempty"`
+	Env             map[string]string `json:"env,omitempty"`
+	Namespace       string            `json:"namespace,omitempty"`
+	CreateNamespace bool              `json:"createNamespace,omitempty"`
+	ServiceAccount  string            `json:"serviceAccount,omitempty"`
+	SkipIfSucceeded bool              `json:"skipIfSucceeded,omitempty"`
+}
+
+// TargetNamespace defaults to "default".
+func (j *JobOp) TargetNamespace() string {
+	if j.Namespace != "" {
+		return j.Namespace
+	}
+	return "default"
 }
