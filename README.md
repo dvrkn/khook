@@ -15,7 +15,7 @@ binary, no bash.
 [![Helm SDK](https://img.shields.io/badge/helm-v4-0F1689?logo=helm&logoColor=white)](go.mod)
 [![Status](https://img.shields.io/badge/status-pre--release-orange)](ROADMAP.md)
 
-**[Docs](https://dvrkn.github.io/khook/) · [Quickstart](https://dvrkn.github.io/khook/docs/) · [DSL](https://dvrkn.github.io/khook/dsl/) · [CLI](https://dvrkn.github.io/khook/cli/) · [vs Terraform](https://dvrkn.github.io/khook/vs-terraform/)**
+**[Docs](https://khook.io/) · [Quickstart](https://khook.io/docs/) · [DSL](https://khook.io/dsl/) · [CLI](https://khook.io/cli/) · [vs Terraform](https://khook.io/vs-terraform/)**
 
 </div>
 
@@ -76,7 +76,7 @@ $ khook apply -f bootstrap.yaml
 Seven verbs cover the bootstrap surface — `helm`, `apply`, `delete`, `patch`,
 `wait`, `rollout`, `job` — with `${VAR}` substitution, [sprig](https://github.com/Masterminds/sprig)
 pipelines, and `when:` ([CEL](https://cel.dev)) conditionals so one spec serves
-many environments. Full field reference: **[the DSL spec](https://dvrkn.github.io/khook/dsl/)**.
+many environments. Full field reference: **[the DSL spec](https://khook.io/dsl/)**.
 
 ## Quickstart
 
@@ -92,15 +92,15 @@ On a terminal each step is a live status line; in CI you get plain logs and a
 summary table, or `--output json`. Run it again — everything converges, nothing
 breaks. That's the point.
 
-Full walkthrough in **[Getting started](https://dvrkn.github.io/khook/docs/)**.
+Full walkthrough in **[Getting started](https://khook.io/docs/)**.
 
 ## Docs
 
-- **[Getting started](https://dvrkn.github.io/khook/docs/)** — install, first spec, variables
-- **[DSL specification](https://dvrkn.github.io/khook/dsl/)** — the seven step types, variables, pipelines, conditionals
-- **[CLI reference](https://dvrkn.github.io/khook/cli/)** — commands, flags, variable precedence, exit codes, semantics
-- **[vs Terraform](https://dvrkn.github.io/khook/vs-terraform/)** — why not the `kubernetes`/`helm` providers
-- **[Examples](https://dvrkn.github.io/khook/examples/)** — [`real-case.yaml`](examples/real-case.yaml) (production-shaped EKS bootstrap), [`localenv.yaml`](examples/localenv.yaml) (k3d/kind)
+- **[Getting started](https://khook.io/docs/)** — install, first spec, variables
+- **[DSL specification](https://khook.io/dsl/)** — the seven step types, variables, pipelines, conditionals
+- **[CLI reference](https://khook.io/cli/)** — commands, flags, variable precedence, exit codes, semantics
+- **[vs Terraform](https://khook.io/vs-terraform/)** — why not the `kubernetes`/`helm` providers
+- **[Examples](https://khook.io/examples/)** — [`real-case.yaml`](examples/real-case.yaml) (production-shaped EKS bootstrap), [`localenv.yaml`](examples/localenv.yaml) (k3d/kind)
 
 ## Status
 
