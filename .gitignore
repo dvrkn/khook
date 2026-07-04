@@ -1,3 +1,11 @@
+# Website (Jekyll) build artifacts
+docs/_site/
+docs/.jekyll-cache/
+docs/.jekyll-metadata
+docs/.bundle/
+docs/vendor/
+docs/Gemfile.lock
+
 # Build artifacts
 bin/
 bootstrap

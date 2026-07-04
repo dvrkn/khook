@@ -1,0 +1,304 @@
+---
+layout: default
+title: khook — cloud-init for Kubernetes
+description: >-
+  One static binary that takes a freshly created Kubernetes cluster from
+  "API server answers" to "workloads can be deployed". Declarative, idempotent,
+  zero runtime dependencies.
+permalink: /
+---
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <h1><em>cloud-init</em> for Kubernetes</h1>
+      <p class="lede">
+        One static binary that takes a freshly created cluster from
+        <strong>“API server answers”</strong> to
+        <strong>“workloads can be deployed.”</strong>
+        No kubectl, no helm binary, no bash, no <code>sleep 30</code>.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="{{ '/docs/' | relative_url }}">Get started</a>
+        <a class="btn btn-secondary" href="{{ site.repo_url }}">View on GitHub</a>
+      </div>
+    </div>
+    <div>
+      <div class="window">
+        <div class="window-bar">
+          <span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span>
+          <span class="window-title">bootstrap.yaml</span>
+        </div>
+{% highlight yaml %}
+apiVersion: khook.io/v1
+kind: Khook
+metadata:
+  name: bootstrap
+defaults:
+  timeout: 5m
+steps:
+  - name: cilium
+    helm:
+      chart: cilium
+      repo: https://helm.cilium.io/
+      version: 1.18.4
+      namespace: kube-system
+      atomic: true
+  - name: all-ready
+    needs: [cilium]
+    wait:
+      for: condition=Ready
+      on: pods
+      allNamespaces: true
+{% endhighlight %}
+      </div>
+      <div class="window">
+        <div class="window-bar">
+          <span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span>
+          <span class="window-title">zsh</span>
+        </div>
+        <pre><code><span class="highlight"><span class="gp">$ </span>khook apply -f bootstrap.yaml</span>
+<span class="console-ok">✓</span> cilium (helm)  24.108s
+<span class="console-ok">✓</span> all-ready (wait)  9.412s</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <p class="section-kicker">The problem</p>
+    <h2>The gap nobody owns</h2>
+    <p class="section-lede">
+      Terraform (or eksctl, or CAPI) hands you a cluster. ArgoCD takes over once
+      it’s installed. In between lives everybody’s least favorite artifact: the
+      <strong>bootstrap script</strong> — a few hundred lines of
+      <code>kubectl apply</code>, <code>helm upgrade --install</code>,
+      <code>sleep 30</code>, and retry loops, duct-taped into a
+      <code>null_resource</code> and feared by everyone on call.
+      khook replaces that gap with a declarative spec: a DAG of steps it
+      validates, plans, and converges — the same way every time.
+    </p>
+  </div>
+</section>
+
+<section class="section alt">
+  <div class="wrap">
+    <p class="section-kicker">Why khook</p>
+    <h2>Built for the day-zero window</h2>
+    <p class="section-lede">
+      Everything between “cluster exists” and “GitOps has the wheel” —
+      sequenced, wait-heavy, run-once-converge-always.
+    </p>
+    <div class="feature-grid">
+      <div class="feature">
+        <div class="feature-icon">📦</div>
+        <h3>One binary, zero dependencies</h3>
+        <p>The Kubernetes and Helm SDKs are embedded. khook never shells out —
+        nothing to install on the runner but khook itself.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🕸️</div>
+        <h3>A DAG, not a script</h3>
+        <p>Steps declare <code>needs:</code>; khook topologically sorts them and
+        runs each level in parallel. Cycles are caught before anything touches
+        the cluster.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔁</div>
+        <h3>Idempotent by design</h3>
+        <p>Re-running a spec is always safe: Helm release history decides
+        install-vs-upgrade, applies converge existing resources, deletes treat
+        “already gone” as success. Run it on every <code>terraform apply</code>.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🚨</div>
+        <h3>Fails loud, precisely</h3>
+        <p>Per-step timeouts and retries, <code>onError: fail | continue</code>,
+        and a summary naming exactly what succeeded, failed, or was skipped —
+        with distinct exit codes for validation vs execution.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔍</div>
+        <h3>Plan before you touch</h3>
+        <p><code>khook plan</code> predicts install / upgrade / no-op per step
+        against the live cluster; <code>--diff</code> renders exact object
+        changes via server-side dry-run. Reads only — plan never mutates.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🤝</div>
+        <h3>Bootstrap, then hand off</h3>
+        <p>khook installs your CNI, secrets tooling, and GitOps controller —
+        then gets out of the way. It is deliberately <em>not</em> a GitOps
+        engine.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <p class="section-kicker">The DSL</p>
+    <h2>Seven verbs cover the bootstrap surface</h2>
+    <p class="section-lede">
+      A spec is a set of steps, each with exactly one action — the key implies
+      the type, no discriminator field. Variables
+      (<code>${VAR}</code>, <code>${VAR:-default}</code>, sprig pipelines) and
+      <code>when:</code> CEL conditions keep one spec serving many environments.
+    </p>
+    <div class="table-scroll">
+      <table class="verbs-table">
+        <thead>
+          <tr><th>Verb</th><th>What it does</th><th>Instead of</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>helm:</code></td>
+            <td>install-or-upgrade a chart (history decides)</td>
+            <td><code>helm repo add</code> + <code>helm upgrade --install</code></td>
+          </tr>
+          <tr>
+            <td><code>apply:</code></td>
+            <td>apply manifests — inline, file, URL, or kustomize — optionally waiting on them</td>
+            <td><code>kubectl apply -f/-k</code> (<code>&amp;&amp; kubectl wait</code>)</td>
+          </tr>
+          <tr>
+            <td><code>delete:</code></td>
+            <td>remove resources by manifest, selector, or Helm release</td>
+            <td><code>kubectl delete</code> / <code>helm uninstall</code></td>
+          </tr>
+          <tr>
+            <td><code>patch:</code></td>
+            <td>modify a resource in place (strategic/merge/json)</td>
+            <td><code>kubectl patch</code></td>
+          </tr>
+          <tr>
+            <td><code>wait:</code></td>
+            <td>block until a condition or jsonpath holds (or gone)</td>
+            <td><code>kubectl wait</code> + <code>sleep</code>-and-pray</td>
+          </tr>
+          <tr>
+            <td><code>rollout:</code></td>
+            <td>restart / await workload rollouts</td>
+            <td><code>kubectl rollout restart/status</code></td>
+          </tr>
+          <tr>
+            <td><code>job:</code></td>
+            <td>run a container to completion in-cluster</td>
+            <td>one-off <code>kubectl run</code> / bash scripts</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="section alt">
+  <div class="wrap split">
+    <div>
+      <p class="section-kicker">Variables &amp; conditions</p>
+      <h2>One spec, many environments</h2>
+      <ul class="checklist">
+        <li><strong>Env-first variables</strong> — values come from
+          <code>--set</code>, <code>--var-file</code>, or
+          <code>KHOOK_VAR_*</code> environment variables; a missing variable is
+          a validation error, reported all at once.</li>
+        <li><strong>Secrets stay out of your logs</strong> —
+          <code>KHOOK_SECRET_*</code> values (and anything derived from them
+          through pipelines) are redacted from logs, plan, and diff.</li>
+        <li><strong>Sprig pipelines on values</strong>, helm-style —
+          hermetic function set, so <code>plan</code> and <code>apply</code>
+          always see the same spec.</li>
+        <li><strong>CEL conditions</strong> — <code>when:</code> decides at
+          load time, before anything touches the cluster; skipped steps still
+          satisfy their dependents’ <code>needs</code>.</li>
+      </ul>
+    </div>
+    <div class="window">
+      <div class="window-bar">
+        <span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span>
+        <span class="window-title">variables.yaml</span>
+      </div>
+{% highlight yaml %}
+steps:
+  - name: app-namespace
+    apply:
+      manifests:
+        - inline: |
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: ${APP_NAME | lower | trunc 63}
+
+  - name: argocd
+    needs: [app-namespace]
+    when: vars.get("ENABLE_ARGOCD", "false") == "true"
+    helm:
+      chart: argo-cd
+      repo: https://argoproj.github.io/argo-helm
+      version: ${ARGOCD_CHART_VERSION:-7.7.5}
+      namespace: argocd
+      createNamespace: true
+{% endhighlight %}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap split">
+    <div>
+      <p class="section-kicker">vs Terraform</p>
+      <h2>Isn’t this just Terraform’s <code>kubernetes</code>/<code>helm</code> providers?</h2>
+      <ul class="checklist">
+        <li><strong>No chicken-and-egg.</strong> Providers are configured at
+          plan time, but the cluster’s endpoint only exists after apply. khook
+          runs strictly after: a kubeconfig is an input, never a cycle in the
+          graph.</li>
+        <li><strong>Plans need a live API schema.</strong> Ship custom
+          resource definitions and the resources that use them in one
+          Terraform apply and the plan fails — the type doesn’t exist yet.
+          khook executes in DAG order against the real server, so they land
+          in order.</li>
+        <li><strong>Waiting is first-class.</strong> Bootstrap is mostly
+          waiting; readiness gates are steps, not <code>time_sleep</code> and
+          <code>local-exec</code>.</li>
+        <li><strong>No state hostage-taking.</strong> khook keeps no object
+          inventory — the cluster is the source of truth, and handing off to
+          GitOps is the design, not a turf war.</li>
+      </ul>
+      <p><a href="{{ '/vs-terraform/' | relative_url }}">Read the full comparison →</a></p>
+    </div>
+    <div>
+      <p class="section-kicker">Quickstart</p>
+      <h2>Try it in 60 seconds</h2>
+      <div class="window">
+        <div class="window-bar">
+          <span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span>
+          <span class="window-title">zsh</span>
+        </div>
+{% highlight console %}
+$ go install github.com/dvrkn/khook/cmd/khook@latest
+$ k3d cluster create dev
+$ khook apply -f bootstrap.yaml
+✓ cilium (helm)  24.108s
+✓ all-ready (wait)  9.412s
+{% endhighlight %}
+      </div>
+      <p style="color: var(--muted); margin-top: 14px;">
+        Run it again — everything converges, nothing breaks.
+        <strong>That’s the point.</strong>
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="cta-final">
+  <div class="wrap">
+    <h2>Stop babysitting bootstrap scripts</h2>
+    <p>Declare the day-zero state of your cluster. khook converges it — every time.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="{{ '/docs/' | relative_url }}">Read the docs</a>
+      <a class="btn btn-secondary" href="{{ site.repo_url }}">Star on GitHub</a>
+    </div>
+  </div>
+</section>

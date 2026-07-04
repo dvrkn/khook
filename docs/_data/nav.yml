@@ -1,0 +1,19 @@
+# Docs sidebar, in reading order.
+docs:
+  - title: Getting started
+    url: /docs/
+  - title: DSL specification
+    url: /dsl/
+  - title: CLI reference
+    url: /cli/
+  - title: Examples
+    url: /examples/
+  - title: khook vs Terraform
+    url: /vs-terraform/
+resources:
+  - title: JSON Schema (v1)
+    url: /schema/v1/khook.json
+  - title: Roadmap
+    url: https://github.com/dvrkn/khook/blob/main/ROADMAP.md
+  - title: GitHub
+    url: https://github.com/dvrkn/khook

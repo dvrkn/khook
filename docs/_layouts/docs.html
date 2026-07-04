@@ -1,0 +1,24 @@
+---
+layout: default
+---
+<div class="wrap docs-grid">
+  <aside class="docs-sidebar">
+    <nav>
+      <p class="sidebar-heading">Documentation</p>
+      <ul>
+        {% for item in site.data.nav.docs %}
+        <li><a href="{{ item.url | relative_url }}"{% if page.url == item.url %} class="current"{% endif %}>{{ item.title }}</a></li>
+        {% endfor %}
+      </ul>
+      <p class="sidebar-heading">Resources</p>
+      <ul>
+        {% for item in site.data.nav.resources %}
+        <li><a href="{{ item.url | relative_url }}">{{ item.title }}</a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </aside>
+  <article class="doc-body">
+    {{ content }}
+  </article>
+</div>

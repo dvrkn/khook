@@ -1,3 +1,10 @@
+---
+title: CLI reference
+layout: docs
+permalink: /cli/
+description: khook commands, flags, variable precedence, exit codes, and execution semantics.
+---
+<!-- {% raw %} — body is Liquid-free on the website build; invisible on GitHub -->
 # khook CLI reference
 
 One binary, six subcommands. Cluster access follows standard kubeconfig
@@ -189,3 +196,5 @@ line for machine consumption; the summary (table, JSON results, or live
 progress lines) goes to stdout, logs to stderr. When `apply` renders live
 progress on a TTY, the default log level is raised to `warn` unless
 `--log-level` was given explicitly.
+
+<!-- {% endraw %} -->

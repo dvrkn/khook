@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../schema/v1/khook.json
+# yaml-language-server: $schema=https://khook.io/schema/v1/khook.json
 apiVersion: khook.io/v1
 kind: Khook
 metadata:

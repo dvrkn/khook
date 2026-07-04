@@ -1,0 +1,12 @@
+source "https://rubygems.org"
+
+# Mirrors the GitHub Pages build environment (Jekyll 3.9 + whitelisted plugins).
+gem "github-pages", "~> 232", group: :jekyll_plugins
+
+# Local preview on modern Ruby: webrick and these former stdlib gems are no
+# longer bundled with Ruby but Jekyll 3.9 (the GitHub Pages version) needs them.
+gem "webrick"
+gem "csv"
+gem "base64"
+gem "bigdecimal"
+gem "logger"

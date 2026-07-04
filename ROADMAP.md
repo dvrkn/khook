@@ -35,8 +35,10 @@ without escape hatches.*
       (`schema/v1/khook.json`), drift-tested, and wired into the examples —
       what remains is making its URLs live once the repo is public:
       - [ ] serve `https://khook.io/schema/v1/khook.json` (the schema's `$id`)
-            — GitHub Pages on the repo root does it, the committed path
-            already matches — or re-point the `$id` at the raw GitHub URL.
+            — the website (`docs/`, Jekyll) already ships the schema at that
+            path (`hack/gen-schema.sh` keeps both copies in sync); what
+            remains is enabling GitHub Pages (main branch, `/docs` folder)
+            with the `khook.io` custom domain.
       - [ ] submit to the [JSON Schema Store](https://github.com/SchemaStore/schemastore)
             with a `fileMatch` pattern, which means picking a spec filename
             convention (`khook.yaml` / `*.khook.yaml`) first.

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% seo %}
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%93%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="wrap nav">
+        <a class="brand" href="{{ '/' | relative_url }}"><span class="brand-mark">⚓</span>khook</a>
+        <div class="nav-links">
+          <a href="{{ '/docs/' | relative_url }}">Docs</a>
+          <a href="{{ '/dsl/' | relative_url }}">DSL</a>
+          <a href="{{ '/cli/' | relative_url }}">CLI</a>
+          <a href="{{ '/examples/' | relative_url }}">Examples</a>
+          <a class="nav-github" href="{{ site.repo_url }}">GitHub&nbsp;↗</a>
+        </div>
+      </nav>
+    </header>
+
+    {{ content }}
+
+    <footer class="site-footer">
+      <div class="wrap footer-grid">
+        <div class="footer-brand">
+          <p class="brand"><span class="brand-mark">⚓</span>khook</p>
+          <p class="footer-tag">cloud-init for Kubernetes.<br>One binary, zero dependencies.</p>
+        </div>
+        <div>
+          <p class="footer-heading">Documentation</p>
+          <a href="{{ '/docs/' | relative_url }}">Getting started</a>
+          <a href="{{ '/dsl/' | relative_url }}">DSL specification</a>
+          <a href="{{ '/cli/' | relative_url }}">CLI reference</a>
+          <a href="{{ '/examples/' | relative_url }}">Examples</a>
+        </div>
+        <div>
+          <p class="footer-heading">Project</p>
+          <a href="{{ site.repo_url }}">GitHub</a>
+          <a href="{{ site.repo_url }}/blob/main/ROADMAP.md">Roadmap</a>
+          <a href="{{ '/schema/v1/khook.json' | relative_url }}">JSON Schema (v1)</a>
+          <a href="{{ '/vs-terraform/' | relative_url }}">khook vs Terraform</a>
+        </div>
+      </div>
+    </footer>
+
+    {% if page.mermaid %}
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: dark ? "dark" : "neutral",
+        themeVariables: { fontSize: "15px" },
+        flowchart: { nodeSpacing: 60, rankSpacing: 55 },
+      });
+      const nodes = [];
+      for (const code of document.querySelectorAll("code.language-mermaid, div.language-mermaid")) {
+        const block = code.closest("pre") || code;
+        const pre = document.createElement("pre");
+        pre.className = "mermaid";
+        pre.textContent = block.textContent.trim();
+        const figure = document.createElement("div");
+        figure.className = "mermaid-figure";
+        figure.appendChild(pre);
+        block.replaceWith(figure);
+        nodes.push(pre);
+      }
+      mermaid.run({ nodes });
+    </script>
+    {% endif %}
+  </body>
+</html>

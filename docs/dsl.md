@@ -1,3 +1,10 @@
+---
+title: DSL specification
+layout: docs
+permalink: /dsl/
+description: Normative spec for apiVersion khook.io/v1, kind Khook — step types, variables, pipelines, and conditions.
+---
+<!-- {% raw %} — body is Liquid-free on the website build; invisible on GitHub -->
 # khook DSL v1 — specification
 
 Normative spec for `apiVersion: khook.io/v1`, `kind: Khook`.
@@ -14,8 +21,10 @@ yaml-language-server at it from the first line of a spec:
 # yaml-language-server: $schema=<path or URL to khook.json>
 ```
 
-The examples use a repo-relative path; once the schema is published, the
-canonical URL is `https://khook.io/schema/v1/khook.json` (the schema's `$id`).
+The examples use the canonical URL,
+`https://khook.io/schema/v1/khook.json` (the schema's `$id`, served by the
+website); a repo-relative path to the committed artifact works too — offline,
+or before the site is reachable.
 
 ## Document envelope
 
@@ -568,3 +577,5 @@ they are not re-litigated:
   for. It shares `wait.for`'s grammar rather than growing its own.
 - **`kustomize:` is a manifest source, not a step type** — one list, four
   source shapes; local paths only (remote bases would need a `git` binary).
+
+<!-- {% endraw %} -->
