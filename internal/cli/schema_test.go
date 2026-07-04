@@ -11,7 +11,7 @@ import (
 	yamlv3 "go.yaml.in/yaml/v3"
 )
 
-const committedSchema = "../../schema/v1/khook.json"
+const committedSchema = "../../docs/schema/v1/khook.json"
 
 // The committed artifact is the published face of the frozen v1 schema — it
 // must always equal what `khook schema` prints.
@@ -28,10 +28,10 @@ func TestCommittedSchemaCurrent(t *testing.T) {
 
 	committed, err := os.ReadFile(committedSchema)
 	if err != nil {
-		t.Fatalf("reading committed schema (run hack/gen-schema.sh?): %v", err)
+		t.Fatalf("reading committed schema (run make schema?): %v", err)
 	}
 	if !bytes.Equal(generated, committed) {
-		t.Fatal("schema/v1/khook.json is stale — run hack/gen-schema.sh and commit the result")
+		t.Fatal("docs/schema/v1/khook.json is stale — run make schema and commit the result")
 	}
 }
 

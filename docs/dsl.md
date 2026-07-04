@@ -13,7 +13,7 @@ disagree, this document wins. Anything marked **(roadmap)** is not part of v1
 core — see the command coverage matrix at the bottom and `ROADMAP.md`.
 
 A machine-readable JSON Schema of this spec is committed at
-[`schema/v1/khook.json`](../schema/v1/khook.json) (also printed by
+[`docs/schema/v1/khook.json`](schema/v1/khook.json) (also printed by
 `khook schema`). For editor validation and autocomplete, point
 yaml-language-server at it from the first line of a spec:
 

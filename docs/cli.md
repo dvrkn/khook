@@ -238,8 +238,8 @@ per manifest/values entry, exactly one of `restart`/`status` (rollout) and
 `manifests`/`resource`/`release` (delete), and the `onError`/patch-`type`
 value sets.
 
-The same schema is committed at [`schema/v1/khook.json`](../schema/v1/khook.json)
-for editors (`# yaml-language-server: $schema=...`); `hack/gen-schema.sh`
+The same schema is committed at [`docs/schema/v1/khook.json`](schema/v1/khook.json)
+for editors (`# yaml-language-server: $schema=...`); `make schema`
 regenerates it, and a unit test fails when it drifts from the spec types.
 The schema validates specs *as authored* — `${VAR}` references live inside
 string values and pass through untouched.

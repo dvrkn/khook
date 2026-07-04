@@ -31,17 +31,17 @@ the [README](README.md); when an item here ships, it moves there.
 *Goal: trivially runnable from every place a cluster gets created.*
 
 - [ ] **CI**: GitHub Actions — lint (golangci-lint), unit tests, the k3d E2E
-      (`hack/e2e.sh`), build matrix (linux/darwin, amd64/arm64).
+      (`tests/e2e.sh`), build matrix (linux/darwin, amd64/arm64).
 - [ ] **Release channels**: goreleaser → GitHub Releases (static binaries),
       Homebrew tap, multi-arch container image (GHCR).
 - [ ] **Publish the v1 JSON schema**: the schema is generated, committed
-      (`schema/v1/khook.json`), drift-tested, and wired into the examples —
+      (`docs/schema/v1/khook.json`), drift-tested, and wired into the examples —
       what remains is making its URLs live once the repo is public:
       - [ ] serve `https://khook.io/schema/v1/khook.json` (the schema's `$id`)
             — the website (`docs/`, Jekyll) already ships the schema at that
-            path (`hack/gen-schema.sh` keeps both copies in sync); what
-            remains is enabling GitHub Pages (main branch, `/docs` folder)
-            with the `khook.io` custom domain.
+            path (`make schema` writes it there directly, the site's
+            single source of truth); what remains is enabling GitHub Pages
+            (main branch, `/docs` folder) with the `khook.io` custom domain.
       - [ ] submit to the [JSON Schema Store](https://github.com/SchemaStore/schemastore)
             with a `fileMatch` pattern, which means picking a spec filename
             convention (`khook.yaml` / `*.khook.yaml`) first.

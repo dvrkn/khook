@@ -23,7 +23,12 @@ test:
 	go test ./...
 
 e2e:
-	./hack/e2e.sh
+	./tests/e2e.sh
 
+# Regenerate the committed JSON Schema from the spec types. docs/ is the single
+# source of truth: GitHub Pages (serving /docs) publishes the schema's $id URL,
+# https://khook.io/schema/v1/khook.json, from there. schema_test.go fails when
+# the committed artifact drifts from the types.
 schema:
-	./hack/gen-schema.sh
+	mkdir -p docs/schema/v1
+	go run ./cmd/khook schema > docs/schema/v1/khook.json

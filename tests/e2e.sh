@@ -10,7 +10,7 @@
 #      objects, then khook apply examples/simple.yaml, asserts the resources exist
 #   5. cluster-aware plan predicts upgrade and plan --diff reports no changes,
 #      then re-applies the same spec to assert idempotency (helm upgrade path)
-#   6. khook apply hack/testdata/e2e-ops.yaml (wait / rollout / delete / job coverage)
+#   6. khook apply tests/testdata/e2e-ops.yaml (wait / rollout / delete / job coverage)
 #   7. helm depth: installs a chart from a local path, then uninstalls the
 #      release via delete.release and asserts the re-run is a no-op
 #   8. kubectl depth: apply.waitFor, jsonpath wait, patch (strategic + json),
@@ -28,9 +28,9 @@
 #      destroy is an idempotent no-op
 #
 # Usage:
-#   ./hack/e2e.sh                 # full run, cluster deleted at the end
-#   KEEP_CLUSTER=1 ./hack/e2e.sh  # keep the cluster for debugging
-#   CLUSTER_NAME=x ./hack/e2e.sh  # custom cluster name
+#   ./tests/e2e.sh                 # full run, cluster deleted at the end
+#   KEEP_CLUSTER=1 ./tests/e2e.sh  # keep the cluster for debugging
+#   CLUSTER_NAME=x ./tests/e2e.sh  # custom cluster name
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -111,7 +111,7 @@ grep -q 'digraph "local-demo"' <<<"${graph_out}" || fail "graph --format dot sho
 grep -q '"create-namespace" -> "ingress-nginx";' <<<"${graph_out}" || fail "graph --format dot should emit the needs edge, got: ${graph_out}"
 
 # a step excluded by when: is drawn as skipped
-graph_out="$("${KHOOK}" graph -f "${REPO_ROOT}/hack/testdata/e2e-ops.yaml" --set OPS_NAMESPACE="${OPS_NS}")"
+graph_out="$("${KHOOK}" graph -f "${REPO_ROOT}/tests/testdata/e2e-ops.yaml" --set OPS_NAMESPACE="${OPS_NS}")"
 grep -q '"conditional-extra (apply, skipped)"\]:::skipped' <<<"${graph_out}" || fail "graph should mark the when:-excluded step skipped, got: ${graph_out}"
 
 # validation failures must exit 2
@@ -185,10 +185,10 @@ status="$(k -n "${INGRESS_NS}" get secret "sh.helm.release.v1.ingress-nginx.v${r
 [[ "${status}" == "deployed" ]] || fail "helm release status after re-apply: ${status}, want deployed"
 
 # --- wait / rollout / delete / job / when coverage ----------------------------
-log "khook apply hack/testdata/e2e-ops.yaml (wait/rollout/delete/job/when)"
+log "khook apply tests/testdata/e2e-ops.yaml (wait/rollout/delete/job/when)"
 "${KHOOK}" apply \
   --kubeconfig "${KUBECONFIG_FILE}" \
-  -f "${REPO_ROOT}/hack/testdata/e2e-ops.yaml" \
+  -f "${REPO_ROOT}/tests/testdata/e2e-ops.yaml" \
   --set OPS_NAMESPACE="${OPS_NS}"
 
 succeeded="$(k -n "${OPS_NS}" get job hello-job -o jsonpath='{.status.succeeded}')"
@@ -203,10 +203,10 @@ k -n "${OPS_NS}" get configmap conditional-after >/dev/null || fail "configmap c
 # --- helm depth: local chart path + release uninstall ------------------------
 HELM_DEPTH_NS="e2e-helm-depth"
 
-log "khook apply hack/testdata/e2e-helm-depth.yaml (local chart path)"
+log "khook apply tests/testdata/e2e-helm-depth.yaml (local chart path)"
 "${KHOOK}" apply --kubeconfig "${KUBECONFIG_FILE}" \
-  -f "${REPO_ROOT}/hack/testdata/e2e-helm-depth.yaml" \
-  --set CHART_PATH="${REPO_ROOT}/hack/testdata/e2e-chart" \
+  -f "${REPO_ROOT}/tests/testdata/e2e-helm-depth.yaml" \
+  --set CHART_PATH="${REPO_ROOT}/tests/testdata/e2e-chart" \
   --set HELM_NS="${HELM_DEPTH_NS}"
 greeting="$(k -n "${HELM_DEPTH_NS}" get configmap e2e-local-cm -o jsonpath='{.data.greeting}')"
 [[ "${greeting}" == "from-khook" ]] || fail "local chart values not applied, got '${greeting}'"
@@ -214,7 +214,7 @@ greeting="$(k -n "${HELM_DEPTH_NS}" get configmap e2e-local-cm -o jsonpath='{.da
 log "delete.release uninstalls the release; the re-run is a no-op"
 uninstall_spec() {
   "${KHOOK}" "$1" --kubeconfig "${KUBECONFIG_FILE}" \
-    -f "${REPO_ROOT}/hack/testdata/e2e-helm-uninstall.yaml" \
+    -f "${REPO_ROOT}/tests/testdata/e2e-helm-uninstall.yaml" \
     --set HELM_NS="${HELM_DEPTH_NS}"
 }
 plan_out="$(uninstall_spec plan)"
@@ -232,9 +232,9 @@ kd_spec() {
   local cmd="$1"
   shift
   "${KHOOK}" "${cmd}" --kubeconfig "${KUBECONFIG_FILE}" \
-    -f "${REPO_ROOT}/hack/testdata/e2e-kubectl-depth.yaml" \
+    -f "${REPO_ROOT}/tests/testdata/e2e-kubectl-depth.yaml" \
     --set KD_NAMESPACE="${KD_NS}" \
-    --set KUSTOMIZE_DIR="${REPO_ROOT}/hack/testdata/e2e-kustomize" \
+    --set KUSTOMIZE_DIR="${REPO_ROOT}/tests/testdata/e2e-kustomize" \
     "$@"
 }
 
@@ -242,7 +242,7 @@ log "khook plan reports the patch target as not-yet-existing"
 plan_out="$(kd_spec plan)"
 grep -q "must exist by the time this step runs" <<<"${plan_out}" || fail "plan should flag the missing patch target, got: ${plan_out}"
 
-log "khook apply hack/testdata/e2e-kubectl-depth.yaml (waitFor/jsonpath/patch/kustomize)"
+log "khook apply tests/testdata/e2e-kubectl-depth.yaml (waitFor/jsonpath/patch/kustomize)"
 kd_spec apply
 
 available="$(k -n "${KD_NS}" get deployment depth-echo -o jsonpath='{.status.availableReplicas}')"
@@ -271,7 +271,7 @@ state_spec() {
   local cmd="$1"
   shift
   "${KHOOK}" "${cmd}" --kubeconfig "${KUBECONFIG_FILE}" \
-    -f "${REPO_ROOT}/hack/testdata/e2e-state.yaml" \
+    -f "${REPO_ROOT}/tests/testdata/e2e-state.yaml" \
     --set STATE_NS="${STATE_NS}" \
     "$@"
 }
@@ -354,7 +354,7 @@ grep -q '"found": false' <<<"${status_out}" || fail "status after destroy should
 
 log "destroy: removes the e2e-ops job (delete/rollout/wait steps skip)"
 "${KHOOK}" destroy --kubeconfig "${KUBECONFIG_FILE}" \
-  -f "${REPO_ROOT}/hack/testdata/e2e-ops.yaml" \
+  -f "${REPO_ROOT}/tests/testdata/e2e-ops.yaml" \
   --set OPS_NAMESPACE="${OPS_NS}"
 k -n "${OPS_NS}" get job hello-job >/dev/null 2>&1 && fail "job hello-job should be gone after destroy"
 k -n "${OPS_NS}" get configmap conditional-after >/dev/null 2>&1 && fail "configmap conditional-after should be gone after destroy"

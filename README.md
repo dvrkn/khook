@@ -181,7 +181,7 @@ Grafana at `grafana.localhost`).
 | `khook validate -f spec.yaml` | parse + validate (exit 2 on problems) |
 | `khook status -f spec.yaml` | read the spec's run-state record (`state:`) and show the last run — what succeeded, what failed, what the next apply resumes |
 | `khook graph -f spec.yaml` | emit the step DAG as Mermaid (default) or Graphviz DOT (`--format dot`) for docs and review |
-| `khook schema` | print the spec's JSON Schema (committed at [`schema/v1/khook.json`](schema/v1/khook.json) — point `# yaml-language-server: $schema=...` at it for editor validation and autocomplete) |
+| `khook schema` | print the spec's JSON Schema (committed at [`docs/schema/v1/khook.json`](docs/schema/v1/khook.json) — point `# yaml-language-server: $schema=...` at it for editor validation and autocomplete) |
 | `khook version` | print version info |
 
 Full reference — flags, variable precedence, exit codes, execution
@@ -199,7 +199,7 @@ CI, release channels, and a Terraform/Lambda integration are on the
 
 ```bash
 go test ./...    # unit tests (engine, spec, executors against fakes)
-./hack/e2e.sh    # end-to-end against a throwaway k3d cluster
+./tests/e2e.sh    # end-to-end against a throwaway k3d cluster
 ```
 
 Contributions welcome — read [`AGENTS.md`](AGENTS.md) for repo conventions

@@ -23,7 +23,7 @@ k3d E2E) is implemented. Read in this order before doing anything:
 
 Layout: `cmd/khook` (main), `internal/spec` (types/parse/validate/variables),
 `internal/engine` (DAG levels + runner), `internal/ops` (executors),
-`internal/kube` (clients), `internal/cli` (cobra commands), `hack/e2e.sh`
+`internal/kube` (clients), `internal/cli` (cobra commands), `tests/e2e.sh`
 (k3d end-to-end; run it after touching engine or executors).
 
 ## Decisions already made (don't re-litigate)

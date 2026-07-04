@@ -101,7 +101,7 @@ Steps are topologically sorted and run in **parallel levels**: everything
 with satisfied `needs` runs concurrently. Dependency cycles are a validation
 error — caught before anything touches the cluster.
 
-The first line wires your editor to the [JSON Schema](../schema/v1/khook.json)
+The first line wires your editor to the [JSON Schema](schema/v1/khook.json)
 for validation and autocomplete via yaml-language-server.
 
 ## Validate, plan, then apply
