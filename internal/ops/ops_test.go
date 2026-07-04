@@ -161,7 +161,7 @@ func TestApplySkipIfExists(t *testing.T) {
 	e, dyn, _ := testExecutor(t, existing)
 	step := applyStep("cm", &spec.ApplyOp{
 		Namespace:    "target",
-		SkipIfExists: true,
+		SkipIf:       spec.SkipIfExists,
 		Manifests:    []spec.ManifestSource{{Inline: configMapYAML}},
 	})
 	if err := e.Execute(context.Background(), step); err != nil {
@@ -170,7 +170,7 @@ func TestApplySkipIfExists(t *testing.T) {
 	got, _ := dyn.Resource(corev1.SchemeGroupVersion.WithResource("configmaps")).
 		Namespace("target").Get(context.Background(), "demo", metav1.GetOptions{})
 	if val, _, _ := unstructured.NestedString(got.Object, "data", "key"); val != "untouched" {
-		t.Fatalf("data.key = %q; skipIfExists must not modify the resource", val)
+		t.Fatalf("data.key = %q; skipIf: exists must not modify the resource", val)
 	}
 }
 
@@ -251,14 +251,14 @@ func TestApplyWaitForRunsOnSkipIfExists(t *testing.T) {
 	e, _, _ := testExecutor(t, existing)
 	step := applyStep("pod", &spec.ApplyOp{
 		Namespace:    "ns1",
-		SkipIfExists: true,
+		SkipIf:       spec.SkipIfExists,
 		WaitFor:      "condition=Ready",
 		Manifests:    []spec.ManifestSource{{Inline: podYAML}},
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	if err := e.Execute(ctx, step); err == nil {
-		t.Fatal("waitFor must still gate the step when skipIfExists short-circuits")
+		t.Fatal("waitFor must still gate the step when skipIf: exists short-circuits")
 	}
 }
 

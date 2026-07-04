@@ -27,7 +27,7 @@ const (
 	ActionRestart   Action = "restart"   // rollout restart
 	ActionRun       Action = "run"       // job: creates (or replaces) the Job and runs it
 	ActionWait      Action = "wait"      // wait / rollout status: condition not met yet
-	ActionSkip      Action = "skip"      // a skipIf* field or a false when: short-circuits the step
+	ActionSkip      Action = "skip"      // a skipIf predicate or a false when: short-circuits the step
 	ActionNone      Action = "no-op"     // nothing to do (already absent / already satisfied)
 	ActionUnknown   Action = "unknown"   // cannot assess against the current cluster
 )
@@ -103,8 +103,8 @@ func planHelmRelease(cfg *action.Configuration, op *spec.HelmOp, release string,
 		current = fmt.Sprintf("revision %d (%s-%s, %s)",
 			rel.Version, rel.Chart.Metadata.Name, rel.Chart.Metadata.Version, rel.Info.Status)
 	}
-	if op.SkipIfInstalled {
-		return Assessment{ActionSkip, "skipIfInstalled: " + current}
+	if op.SkipIf == spec.SkipIfInstalled {
+		return Assessment{ActionSkip, "skipIf: installed; " + current}
 	}
 	return Assessment{ActionUpgrade, fmt.Sprintf("%s -> %s", current, src)}
 }
@@ -134,8 +134,8 @@ func (e *Executor) planApply(ctx context.Context, step *spec.Step) Assessment {
 		}
 	}
 
-	if op.SkipIfExists && len(creates) == 0 && len(unresolved) == 0 {
-		detail := fmt.Sprintf("skipIfExists: all %d resource(s) exist", len(updates))
+	if op.SkipIf == spec.SkipIfExists && len(creates) == 0 && len(unresolved) == 0 {
+		detail := fmt.Sprintf("skipIf: exists; all %d resource(s) exist", len(updates))
 		if op.WaitFor != "" {
 			detail += "; still waits for " + op.WaitFor
 		}

@@ -37,7 +37,7 @@ func (e *Executor) runHelm(ctx context.Context, step *spec.Step) error {
 	if err != nil {
 		return fmt.Errorf("checking release %q history: %w", release, err)
 	}
-	if installed && op.SkipIfInstalled {
+	if installed && op.SkipIf == spec.SkipIfInstalled {
 		e.Log.Info("release already installed, skipping", "release", release, "namespace", namespace)
 		return nil
 	}

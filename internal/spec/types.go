@@ -46,6 +46,17 @@ const (
 	OnErrorContinue = "continue"
 )
 
+// SkipIf values. One field name across the step types that support it; each
+// type accepts exactly one predicate — the one that names its own notion of
+// "already done": helm's release is installed, apply's resources exist, the
+// job's previous run succeeded. A matching predicate skips the step as
+// success.
+const (
+	SkipIfInstalled = "installed" // helm: the release already exists
+	SkipIfExists    = "exists"    // apply: every resource already exists
+	SkipIfSucceeded = "succeeded" // job: this step's Job already completed successfully
+)
+
 // Document is the root of a Khook spec.
 type Document struct {
 	APIVersion string     `json:"apiVersion"`
@@ -231,7 +242,7 @@ type HelmOp struct {
 	Release         string         `json:"release,omitempty"`
 	Namespace       string         `json:"namespace,omitempty"`
 	CreateNamespace bool           `json:"createNamespace,omitempty"`
-	SkipIfInstalled bool           `json:"skipIfInstalled,omitempty"`
+	SkipIf          string         `json:"skipIf,omitempty"`
 	Atomic          bool           `json:"atomic,omitempty"`
 	Wait            bool           `json:"wait,omitempty"`
 	Values          map[string]any `json:"values,omitempty"`
@@ -302,11 +313,11 @@ type ApplyOp struct {
 	Manifests       []ManifestSource `json:"manifests"`
 	Namespace       string           `json:"namespace,omitempty"`
 	CreateNamespace bool             `json:"createNamespace,omitempty"`
-	SkipIfExists    bool             `json:"skipIfExists,omitempty"`
+	SkipIf          string           `json:"skipIf,omitempty"`
 	ServerSide      bool             `json:"serverSide,omitempty"`
 	// WaitFor blocks the step after applying until every applied object
 	// meets the condition — wait.for's grammar minus "delete". It also runs
-	// when skipIfExists short-circuits, so re-runs stay equivalent.
+	// when skipIf: exists short-circuits, so re-runs stay equivalent.
 	WaitFor string `json:"waitFor,omitempty"`
 }
 
@@ -398,7 +409,7 @@ type JobOp struct {
 	Namespace       string            `json:"namespace,omitempty"`
 	CreateNamespace bool              `json:"createNamespace,omitempty"`
 	ServiceAccount  string            `json:"serviceAccount,omitempty"`
-	SkipIfSucceeded bool              `json:"skipIfSucceeded,omitempty"`
+	SkipIf          string            `json:"skipIf,omitempty"`
 }
 
 // TargetNamespace defaults to "default".

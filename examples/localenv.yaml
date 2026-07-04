@@ -33,7 +33,7 @@ steps:
       repo: https://helm.cilium.io/
       version: 1.18.4
       namespace: kube-system
-      skipIfInstalled: true
+      skipIf: installed
       atomic: true
       values:
         operator:
@@ -53,7 +53,7 @@ steps:
       version: 9.1.4
       namespace: argocd
       createNamespace: true
-      skipIfInstalled: true
+      skipIf: installed
       atomic: true
       values:
         configs:
@@ -71,7 +71,7 @@ steps:
       version: 87.5.1
       namespace: monitoring
       createNamespace: true
-      skipIfInstalled: true
+      skipIf: installed
       atomic: true
 
   - name: ingresses

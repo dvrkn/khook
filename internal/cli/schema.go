@@ -107,9 +107,15 @@ func generateSchema() (*jsonschema.Schema, error) {
 	deleteOp.OneOf = exactlyOne("manifests", "resource", "release")
 	prop("DeleteOp", deleteOp, "manifests").MinItems = &one
 
-	prop("ApplyOp", def("ApplyOp"), "manifests").MinItems = &one
+	applyOp := def("ApplyOp")
+	prop("ApplyOp", applyOp, "manifests").MinItems = &one
 
 	prop("PatchOp", def("PatchOp"), "type").Enum = []any{spec.PatchStrategic, spec.PatchMerge, spec.PatchJSON}
+
+	// skipIf: one field name, one predicate per step type.
+	prop("HelmOp", def("HelmOp"), "skipIf").Enum = []any{spec.SkipIfInstalled}
+	prop("ApplyOp", applyOp, "skipIf").Enum = []any{spec.SkipIfExists}
+	prop("JobOp", def("JobOp"), "skipIf").Enum = []any{spec.SkipIfSucceeded}
 
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("schema generation: missing definitions or properties: %s", strings.Join(missing, ", "))

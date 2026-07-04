@@ -45,7 +45,7 @@ func (e *Executor) runJob(ctx context.Context, step *spec.Step) error {
 		return fmt.Errorf("getting job %q: %w", name, err)
 	case existing.Labels[managedByLabelKey] != managedByLabelValue:
 		return fmt.Errorf("job %q in namespace %q exists but is not managed by khook; refusing to replace it", name, namespace)
-	case op.SkipIfSucceeded && jobSucceeded(existing):
+	case op.SkipIf == spec.SkipIfSucceeded && jobSucceeded(existing):
 		e.Log.Info("job already succeeded, skipping", "job", name, "namespace", namespace)
 		return nil
 	default:
@@ -211,8 +211,8 @@ func (e *Executor) planJob(ctx context.Context, step *spec.Step) Assessment {
 	if existing.Labels[managedByLabelKey] != managedByLabelValue {
 		return unknown(fmt.Errorf("job %q exists but is not managed by khook; apply would fail", step.Name))
 	}
-	if op.SkipIfSucceeded && jobSucceeded(existing) {
-		return Assessment{ActionSkip, fmt.Sprintf("job %q already succeeded (skipIfSucceeded)", step.Name)}
+	if op.SkipIf == spec.SkipIfSucceeded && jobSucceeded(existing) {
+		return Assessment{ActionSkip, fmt.Sprintf("job %q already succeeded (skipIf: succeeded)", step.Name)}
 	}
 	return Assessment{ActionRun, fmt.Sprintf("replaces the previous Job and runs image %s to completion", op.Image)}
 }

@@ -172,9 +172,21 @@ func validateAction(step *Step) error {
 	return nil
 }
 
+// validateSkipIf checks skipIf against the one predicate the step type
+// accepts.
+func validateSkipIf(prefix, got, allowed string) error {
+	if got != "" && got != allowed {
+		return fmt.Errorf("%s: skipIf must be %q, got %q", prefix, allowed, got)
+	}
+	return nil
+}
+
 func validateHelm(op *HelmOp) error {
 	// ParseChartSource owns every chart/repo/version/auth rule.
 	if _, err := ParseChartSource(op); err != nil {
+		return err
+	}
+	if err := validateSkipIf("helm", op.SkipIf, SkipIfInstalled); err != nil {
 		return err
 	}
 	for i, src := range op.ValuesFrom {
@@ -208,6 +220,9 @@ func isLocalPath(p string) bool {
 func validateApply(op *ApplyOp) error {
 	if len(op.Manifests) == 0 {
 		return errors.New("apply: manifests must contain at least one source")
+	}
+	if err := validateSkipIf("apply", op.SkipIf, SkipIfExists); err != nil {
+		return err
 	}
 	if op.CreateNamespace && op.Namespace == "" {
 		return errors.New("apply: createNamespace requires namespace")
@@ -314,6 +329,9 @@ func validateRollout(op *RolloutOp) error {
 func validateJob(op *JobOp) error {
 	if op.Image == "" {
 		return errors.New("job: image is required")
+	}
+	if err := validateSkipIf("job", op.SkipIf, SkipIfSucceeded); err != nil {
+		return err
 	}
 	for key := range op.Env {
 		if key == "" {

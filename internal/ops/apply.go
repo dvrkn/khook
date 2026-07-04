@@ -32,7 +32,7 @@ func (e *Executor) runApply(ctx context.Context, step *spec.Step) error {
 	}
 
 	skipped := false
-	if op.SkipIfExists {
+	if op.SkipIf == spec.SkipIfExists {
 		allExist := true
 		for _, obj := range objs {
 			ri, err := e.resourceClient(obj, op.Namespace)
@@ -60,7 +60,7 @@ func (e *Executor) runApply(ctx context.Context, step *spec.Step) error {
 			}
 		}
 	}
-	// waitFor runs even when skipIfExists short-circuited: the condition
+	// waitFor runs even when skipIf: exists short-circuited: the condition
 	// must hold whether this run created the objects or found them, so
 	// re-runs behave like first runs.
 	if op.WaitFor != "" {

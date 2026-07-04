@@ -134,9 +134,8 @@ Semantics, precisely:
   that is substituted into the document — does, and a changed hash means the
   record is ignored and the run starts fresh.
 - Only steps recorded `ok` resume. Failed and skipped steps re-run. `when:`
-  is re-evaluated every run and wins over the record. Per-op checks
-  (`skipIfInstalled`, `skipIfExists`, `skipIfSucceeded`) are unchanged and
-  still guard the steps that actually execute.
+  is re-evaluated every run and wins over the record. Per-op `skipIf` checks
+  are unchanged and still guard the steps that actually execute.
 - The journal is written incrementally after every step, so an interrupted
   run (crash, Ctrl-C) resumes from the last completed step.
 - khook refuses to touch a Secret of the record's name that it does not own
@@ -161,7 +160,7 @@ Semantics, precisely:
   `job:` that re-runs a data migration, a helm upgrade that restarts
   workloads, charts pulled from rate-limited registries.
 
-**Optional** for mid-size specs where the per-op `skipIf*` checks already
+**Optional** for mid-size specs where the per-op `skipIf` checks already
 make re-runs cheap. State still adds two things: resume decisions without
 any cluster probing, including for step types with no natural existence
 check (`patch:`, `wait:`, `rollout:`), and `khook status` visibility into
@@ -262,6 +261,28 @@ Semantics:
   step, by contrast, does block its dependents). Dependents that should be
   excluded together need their own `when:`.
 
+## `skipIf` — skip a step that's already done
+
+One policy, one field name, across the step types that have a natural notion
+of "already done". `skipIf` names a predicate checked against the cluster
+before the step runs; when it holds, the step is skipped **as success**
+(satisfying `needs`). Each type accepts exactly the one predicate that fits
+it — anything else fails validation, and the JSON schema autocompletes the
+right word per type:
+
+| Step type | Predicate | Skips when |
+|---|---|---|
+| `helm:` | `skipIf: installed` | the release already exists (any version, any values) |
+| `apply:` | `skipIf: exists` | every manifest resource already exists |
+| `job:` | `skipIf: succeeded` | this step's Job already completed successfully |
+
+The remaining types need no skip policy: `delete:` treats "already absent" as
+a no-op (`ignoreNotFound` defaults to true), and `wait:` / `rollout: status`
+already no-op when the condition holds. `skipIf` trades convergence for
+stability — the step stops enforcing the spec's version/values/content once
+its target exists, which is exactly right for "don't touch it if it's there"
+steps and wrong for steps that must converge on every run.
+
 ## `helm:` — install or upgrade a chart release
 
 Declarative install-or-upgrade (the release history decides which; v0-proven).
@@ -275,7 +296,7 @@ Declarative install-or-upgrade (the release history decides which; v0-proven).
 | `release` | string | no | step `name` | Helm release name |
 | `namespace` | string | no | `default` | target namespace |
 | `createNamespace` | bool | no | `false` | create namespace if missing |
-| `skipIfInstalled` | bool | no | `false` | skip (success) if the release already exists, regardless of version/values |
+| `skipIf` | `installed` | no | | skip (success) if the release already exists, regardless of version/values — see [skipIf](#skipif--skip-a-step-thats-already-done) |
 | `atomic` | bool | no | `false` | roll back on failure |
 | `wait` | bool | no | `false` | wait for resources ready before step succeeds |
 | `values` | map | no | | inline values (merged over chart defaults) |
@@ -364,7 +385,7 @@ YAML is supported in every source.
 | `manifests` | list | yes | | ordered list of sources, each exactly one of `inline:` (YAML string), `file:` (path), `url:` (HTTP(S)), `kustomize:` (local kustomization directory) |
 | `namespace` | string | no | | default namespace for namespace-less namespaced resources |
 | `createNamespace` | bool | no | `false` | create `namespace` if missing |
-| `skipIfExists` | bool | no | `false` | skip (success) if all resources already exist |
+| `skipIf` | `exists` | no | | skip (success) if all resources already exist — see [skipIf](#skipif--skip-a-step-thats-already-done) |
 | `serverSide` | bool | no | `false` | server-side apply |
 | `waitFor` | string | no | | block until every applied object meets this — [`wait.for`'s grammar](#wait--block-until-a-condition-holds) minus `delete` |
 
@@ -385,7 +406,7 @@ apply:
 `waitFor` — apply + wait in one step, the
 `kubectl apply -f x && kubectl wait --for=... -f x` equivalent: after the
 apply, the step polls **exactly the objects it applied** until each meets the
-condition, bounded by the step `timeout`. It also runs when `skipIfExists`
+condition, bounded by the step `timeout`. It also runs when `skipIf: exists`
 short-circuits — the condition must hold whether this run created the objects
 or found them, so re-runs behave like first runs. Waiting on *other*
 resources (or a subset) is a separate `wait:` step.
@@ -567,7 +588,7 @@ surfaces the pod's last log lines in the step error.
 | `namespace` | string | no | `default` | namespace the Job runs in |
 | `createNamespace` | bool | no | `false` | create `namespace` if missing |
 | `serviceAccount` | string | no | namespace default | ServiceAccount for the pod |
-| `skipIfSucceeded` | bool | no | `false` | skip (success) if this step's Job already completed successfully |
+| `skipIf` | `succeeded` | no | | skip (success) if this step's Job already completed successfully — see [skipIf](#skipif--skip-a-step-thats-already-done) |
 
 ```yaml
 job:
@@ -586,7 +607,7 @@ Semantics:
   `app.kubernetes.io/managed-by: khook`. A same-named Job **not** carrying
   that label is an error — khook never replaces a Job it does not own.
 - Each run **replaces** the previous run's Job (delete, wait for it to be
-  gone, recreate) unless `skipIfSucceeded` short-circuits.
+  gone, recreate) unless `skipIf: succeeded` short-circuits.
 - Retries follow the step's `retries`: the Job is created with
   `backoffLimit: 0` and `restartPolicy: Never`, so every khook attempt is a
   fresh Job rather than an in-cluster pod restart.
@@ -653,7 +674,7 @@ they are not re-litigated:
 - **No `reuseValues`** — carrying a prior release's values forward makes a
   run's outcome depend on cluster state, breaking "the same spec twice gives
   the same result". The spec is the sole source of truth for values;
-  `skipIfInstalled` covers "don't touch an existing release".
+  `skipIf: installed` covers "don't touch an existing release".
 - **No `helm rollback`** — `atomic:` handles failed upgrades; recovery
   otherwise is re-applying a known-good spec, not imperative history surgery.
 - **`values:` is a plain map** (the common case); `valuesFrom:` is a Flux-style

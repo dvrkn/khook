@@ -85,13 +85,13 @@ live cluster (reads only; plan never mutates anything):
 
 | Step type | Predicted action |
 |---|---|
-| `helm:` | `install` (no release history), `upgrade` (shows current revision, chart version, status → target chart), or `skip` (`skipIfInstalled`) |
-| `apply:` | `create` / `configure`, listing which objects are new vs existing, or `skip` (`skipIfExists`) |
+| `helm:` | `install` (no release history), `upgrade` (shows current revision, chart version, status → target chart), or `skip` (`skipIf: installed`) |
+| `apply:` | `create` / `configure`, listing which objects are new vs existing, or `skip` (`skipIf: exists`) |
 | `delete:` | `delete` (named object or selector match count) or `no-op` (already absent) |
 | `patch:` | `configure` (target exists) or `unknown` (target must exist by the time the step runs) |
 | `wait:` | `no-op` when the condition already holds, `wait` otherwise (shows how many objects currently match) |
 | `rollout:` | `restart`, `no-op` (rollout already complete), or `wait` |
-| `job:` | `run` (first run or replacing a previous Job) or `skip` (`skipIfSucceeded`) |
+| `job:` | `run` (first run or replacing a previous Job) or `skip` (`skipIf: succeeded`) |
 
 A step whose `when:` condition is false is reported `skip` (with the
 condition) without touching the cluster — `--offline` shows it too. Steps
@@ -226,8 +226,8 @@ steps not yet started are reported skipped.
 Re-running the same spec is safe: `helm:` upgrades instead of installing,
 `apply:` patches existing resources, `delete:` treats absent resources as
 success (`ignoreNotFound` defaults true), `job:` replaces the previous run's
-Job, and the `skipIfInstalled` / `skipIfExists` / `skipIfSucceeded` fields
-short-circuit steps whose outcome already holds.
+Job, and each type's `skipIf` predicate (`installed` / `exists` /
+`succeeded`) short-circuits steps whose outcome already holds.
 
 ## Logging
 

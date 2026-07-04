@@ -56,8 +56,8 @@ func TestPlanHelmReleaseSkipIfInstalled(t *testing.T) {
 	if err := cfg.Releases.Create(storedRelease("web")); err != nil {
 		t.Fatal(err)
 	}
-	op := &spec.HelmOp{Chart: "nginx", Repo: "https://charts.example.com", SkipIfInstalled: true}
-	assertPlan(t, planHelmRelease(cfg, op, "web", mustChartSource(t, op)), ActionSkip, "skipIfInstalled")
+	op := &spec.HelmOp{Chart: "nginx", Repo: "https://charts.example.com", SkipIf: spec.SkipIfInstalled}
+	assertPlan(t, planHelmRelease(cfg, op, "web", mustChartSource(t, op)), ActionSkip, "skipIf: installed")
 }
 
 func TestPlanHelmUninstall(t *testing.T) {
@@ -111,10 +111,10 @@ func TestPlanApplySkipIfExists(t *testing.T) {
 	e, _, _ := testExecutor(t, existing)
 	step := applyStep("cm", &spec.ApplyOp{
 		Namespace:    "target",
-		SkipIfExists: true,
+		SkipIf:       spec.SkipIfExists,
 		Manifests:    []spec.ManifestSource{{Inline: configMapYAML}},
 	})
-	assertPlan(t, e.Plan(context.Background(), step), ActionSkip, "skipIfExists")
+	assertPlan(t, e.Plan(context.Background(), step), ActionSkip, "skipIf: exists")
 }
 
 func TestPlanApplyUnknownKind(t *testing.T) {

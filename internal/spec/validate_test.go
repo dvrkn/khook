@@ -17,7 +17,9 @@ func validDoc() *Document {
 }
 
 func TestValidateOK(t *testing.T) {
-	if err := Validate(validDoc()); err != nil {
+	doc := validDoc()
+	doc.Steps[0].Apply.SkipIf = SkipIfExists
+	if err := Validate(doc); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -87,6 +89,27 @@ func TestValidate(t *testing.T) {
 			"two actions",
 			func(d *Document) { d.Steps[0].Wait = &WaitOp{For: "condition=Ready", On: "pods"} },
 			"got 2",
+		},
+		{
+			"helm wrong skipIf predicate",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Helm = &HelmOp{Chart: "c", Repo: "https://x", SkipIf: "exists"}
+			},
+			`helm: skipIf must be "installed"`,
+		},
+		{
+			"apply wrong skipIf predicate",
+			func(d *Document) { d.Steps[0].Apply.SkipIf = "installed" },
+			`apply: skipIf must be "exists"`,
+		},
+		{
+			"job wrong skipIf predicate",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Job = &JobOp{Image: "alpine", SkipIf: "exists"}
+			},
+			`job: skipIf must be "succeeded"`,
 		},
 		{
 			"helm missing chart",

@@ -30,8 +30,6 @@ the [README](README.md); when an item here ships, it moves there.
 
 *Goal: a failed bootstrap at step 7/12 is a resume, not a redo.*
 
-- [ ] **Unified skip semantics**: `skipIfInstalled` / `skipIfExists` are per-type
-      today → one consistent `skipIf` policy across all step types.
 - [ ] **Change detection**: extend the shipped run-state record (`state:`, see
       `docs/dsl.md`) with per-step input hashes (chart version + values +
       manifests); a step that is unchanged *and* previously successful skips

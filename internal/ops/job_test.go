@@ -93,7 +93,7 @@ func TestJobSkipIfSucceeded(t *testing.T) {
 	}
 	// No finishJobsOnCreate: a replacement Job would never complete, so a
 	// nil error proves the step skipped.
-	step := jobStep("hello", &spec.JobOp{Image: "alpine", Namespace: "ns1", SkipIfSucceeded: true})
+	step := jobStep("hello", &spec.JobOp{Image: "alpine", Namespace: "ns1", SkipIf: spec.SkipIfSucceeded})
 	if err := e.Execute(jobTestContext(t), step); err != nil {
 		t.Fatal(err)
 	}
@@ -186,9 +186,9 @@ func TestPlanJob(t *testing.T) {
 			wantSub:    "replaces",
 		},
 		{
-			name:       "skipIfSucceeded",
+			name:       "skipIf: succeeded",
 			existing:   existingJob("hello", "ns1", true, true),
-			op:         &spec.JobOp{Image: "alpine", Namespace: "ns1", SkipIfSucceeded: true},
+			op:         &spec.JobOp{Image: "alpine", Namespace: "ns1", SkipIf: spec.SkipIfSucceeded},
 			wantAction: ActionSkip,
 			wantSub:    "already succeeded",
 		},

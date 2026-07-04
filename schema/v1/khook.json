@@ -18,8 +18,11 @@
         "createNamespace": {
           "type": "boolean"
         },
-        "skipIfExists": {
-          "type": "boolean"
+        "skipIf": {
+          "type": "string",
+          "enum": [
+            "exists"
+          ]
         },
         "serverSide": {
           "type": "boolean"
@@ -183,8 +186,11 @@
         "createNamespace": {
           "type": "boolean"
         },
-        "skipIfInstalled": {
-          "type": "boolean"
+        "skipIf": {
+          "type": "string",
+          "enum": [
+            "installed"
+          ]
         },
         "atomic": {
           "type": "boolean"
@@ -240,8 +246,11 @@
         "serviceAccount": {
           "type": "string"
         },
-        "skipIfSucceeded": {
-          "type": "boolean"
+        "skipIf": {
+          "type": "string",
+          "enum": [
+            "succeeded"
+          ]
         }
       },
       "additionalProperties": false,
