@@ -23,10 +23,19 @@ func assertPlan(t *testing.T, got Assessment, want Action, detailContains string
 	}
 }
 
+func mustChartSource(t *testing.T, op *spec.HelmOp) *spec.ChartSource {
+	t.Helper()
+	src, err := spec.ParseChartSource(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return src
+}
+
 func TestPlanHelmReleaseInstall(t *testing.T) {
 	cfg := memoryConfig(t)
-	op := &spec.HelmOp{Chart: "nginx", Version: "1.2.3"}
-	assertPlan(t, planHelmRelease(cfg, op, "web"), ActionInstall, "nginx@1.2.3")
+	op := &spec.HelmOp{Chart: "nginx", Repo: "https://charts.example.com", Version: "1.2.3"}
+	assertPlan(t, planHelmRelease(cfg, op, "web", mustChartSource(t, op)), ActionInstall, "nginx@1.2.3")
 }
 
 func TestPlanHelmReleaseUpgrade(t *testing.T) {
@@ -34,8 +43,8 @@ func TestPlanHelmReleaseUpgrade(t *testing.T) {
 	if err := cfg.Releases.Create(storedRelease("web")); err != nil {
 		t.Fatal(err)
 	}
-	op := &spec.HelmOp{Chart: "nginx"}
-	got := planHelmRelease(cfg, op, "web")
+	op := &spec.HelmOp{Chart: "nginx", Repo: "https://charts.example.com"}
+	got := planHelmRelease(cfg, op, "web", mustChartSource(t, op))
 	assertPlan(t, got, ActionUpgrade, "revision 1")
 	if !strings.Contains(got.Detail, "nginx@latest") {
 		t.Fatalf("detail %q should name the target chart", got.Detail)
@@ -47,8 +56,27 @@ func TestPlanHelmReleaseSkipIfInstalled(t *testing.T) {
 	if err := cfg.Releases.Create(storedRelease("web")); err != nil {
 		t.Fatal(err)
 	}
-	op := &spec.HelmOp{Chart: "nginx", SkipIfInstalled: true}
-	assertPlan(t, planHelmRelease(cfg, op, "web"), ActionSkip, "skipIfInstalled")
+	op := &spec.HelmOp{Chart: "nginx", Repo: "https://charts.example.com", SkipIfInstalled: true}
+	assertPlan(t, planHelmRelease(cfg, op, "web", mustChartSource(t, op)), ActionSkip, "skipIfInstalled")
+}
+
+func TestPlanHelmUninstall(t *testing.T) {
+	cfg := memoryConfig(t)
+	if err := cfg.Releases.Create(storedRelease("web")); err != nil {
+		t.Fatal(err)
+	}
+	got := planHelmUninstallRelease(cfg, &spec.DeleteOp{Release: "web"})
+	assertPlan(t, got, ActionDelete, `uninstalls release "web" revision 1 (test-0.1.0)`)
+}
+
+func TestPlanHelmUninstallAbsent(t *testing.T) {
+	cfg := memoryConfig(t)
+	assertPlan(t, planHelmUninstallRelease(cfg, &spec.DeleteOp{Release: "ghost"}),
+		ActionNone, "already absent")
+
+	ignore := false
+	strict := &spec.DeleteOp{Release: "ghost", IgnoreNotFound: &ignore}
+	assertPlan(t, planHelmUninstallRelease(cfg, strict), ActionUnknown, "step fails")
 }
 
 func TestPlanApplyCreate(t *testing.T) {

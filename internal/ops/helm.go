@@ -12,6 +12,7 @@ import (
 	"helm.sh/helm/v4/pkg/chart/v2/loader"
 	helmcli "helm.sh/helm/v4/pkg/cli"
 	"helm.sh/helm/v4/pkg/kube"
+	"helm.sh/helm/v4/pkg/registry"
 	releasev1 "helm.sh/helm/v4/pkg/release/v1"
 	"helm.sh/helm/v4/pkg/storage/driver"
 
@@ -20,10 +21,14 @@ import (
 
 func (e *Executor) runHelm(ctx context.Context, step *spec.Step) error {
 	op := step.Helm
+	src, err := spec.ParseChartSource(op)
+	if err != nil {
+		return err
+	}
 	release := op.ReleaseName(step.Name)
 	namespace := op.TargetNamespace()
 
-	cfg, err := e.helmConfig(namespace)
+	cfg, err := e.helmConfig(namespace, src)
 	if err != nil {
 		return err
 	}
@@ -43,7 +48,7 @@ func (e *Executor) runHelm(ctx context.Context, step *spec.Step) error {
 		}
 	}
 
-	chrt, values, pathOpts, err := e.loadChart(op)
+	chrt, values, pathOpts, err := e.loadChart(ctx, cfg, op, src)
 	if err != nil {
 		return err
 	}
@@ -69,7 +74,7 @@ func (e *Executor) runHelm(ctx context.Context, step *spec.Step) error {
 		client.WaitStrategy = waitStrategy
 		client.Timeout = timeout
 		client.ChartPathOptions = pathOpts
-		e.Log.Info("helm install", "release", release, "chart", op.Chart, "version", op.Version, "namespace", namespace)
+		e.Log.Info("helm install", "release", release, "chart", src.String(), "namespace", namespace)
 		rel, err := client.RunWithContext(ctx, chrt, values)
 		if err != nil {
 			return fmt.Errorf("installing release %q: %w", release, err)
@@ -84,7 +89,7 @@ func (e *Executor) runHelm(ctx context.Context, step *spec.Step) error {
 	client.WaitStrategy = waitStrategy
 	client.Timeout = timeout
 	client.ChartPathOptions = pathOpts
-	e.Log.Info("helm upgrade", "release", release, "chart", op.Chart, "version", op.Version, "namespace", namespace)
+	e.Log.Info("helm upgrade", "release", release, "chart", src.String(), "namespace", namespace)
 	rel, err := client.RunWithContext(ctx, release, chrt, values)
 	if err != nil {
 		return fmt.Errorf("upgrading release %q: %w", release, err)
@@ -104,35 +109,101 @@ func (e *Executor) logRelease(msg string, rel any) {
 }
 
 // loadChart locates and loads the step's chart and merges its values —
-// everything install, upgrade, and dry-run rendering need.
-func (e *Executor) loadChart(op *spec.HelmOp) (*chartv2.Chart, map[string]any, action.ChartPathOptions, error) {
+// everything install, upgrade, and dry-run rendering need. The returned
+// path options carry repo, version, credentials, and (for oci://) the
+// registry client.
+func (e *Executor) loadChart(ctx context.Context, cfg *action.Configuration, op *spec.HelmOp, src *spec.ChartSource) (*chartv2.Chart, map[string]any, action.ChartPathOptions, error) {
 	settings := helmcli.New()
-	pathOpts := action.ChartPathOptions{RepoURL: op.Repo, Version: op.Version}
-	chartPath, err := pathOpts.LocateChart(op.Chart, settings)
+	// Borrow an Install action's ChartPathOptions: NewInstall copies
+	// cfg.RegistryClient into the unexported registryClient field that
+	// LocateChart requires for oci:// refs.
+	pathOpts := action.NewInstall(cfg).ChartPathOptions
+	pathOpts.RepoURL = src.Repo
+	pathOpts.Version = src.Version
+	pathOpts.Username = src.Username
+	pathOpts.Password = src.Password
+	chartPath, err := pathOpts.LocateChart(src.Ref, settings)
 	if err != nil {
-		return nil, nil, pathOpts, fmt.Errorf("locating chart %q in %s: %w", op.Chart, op.Repo, err)
+		return nil, nil, pathOpts, fmt.Errorf("locating chart %s: %w", src, err)
 	}
 	chrt, err := loader.Load(chartPath)
 	if err != nil {
-		return nil, nil, pathOpts, fmt.Errorf("loading chart %q: %w", op.Chart, err)
+		return nil, nil, pathOpts, fmt.Errorf("loading chart %s: %w", src, err)
 	}
 	if err := checkChartInstallable(chrt); err != nil {
 		return nil, nil, pathOpts, err
 	}
-	values, err := e.helmValues(op)
+	values, err := e.helmValues(ctx, op)
 	if err != nil {
 		return nil, nil, pathOpts, err
 	}
 	return chrt, values, pathOpts, nil
 }
 
-func (e *Executor) helmConfig(namespace string) (*action.Configuration, error) {
+// helmConfig initializes a Helm action configuration for a namespace. src
+// may be nil (uninstall, plan); an oci:// source additionally gets a
+// registry client carrying its credentials.
+func (e *Executor) helmConfig(namespace string, src *spec.ChartSource) (*action.Configuration, error) {
 	cfg := new(action.Configuration)
 	if err := cfg.Init(e.Clients.HelmGetter(namespace), namespace, os.Getenv("HELM_DRIVER")); err != nil {
 		return nil, fmt.Errorf("initializing helm: %w", err)
 	}
 	cfg.SetLogger(e.Log.Handler())
+	if src != nil && src.Form == spec.ChartFormOCI {
+		var opts []registry.ClientOption
+		if src.Username != "" {
+			opts = append(opts, registry.ClientOptBasicAuth(src.Username, src.Password))
+		}
+		rc, err := registry.NewClient(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("initializing registry client: %w", err)
+		}
+		cfg.RegistryClient = rc
+	}
 	return cfg, nil
+}
+
+// runHelmUninstall handles delete:'s release form — the inverse of runHelm.
+// The Uninstall action has no context variant, so the step timeout is
+// enforced through the action's own Timeout.
+func (e *Executor) runHelmUninstall(ctx context.Context, op *spec.DeleteOp) error {
+	namespace := op.TargetNamespace()
+	cfg, err := e.helmConfig(namespace, nil)
+	if err != nil {
+		return err
+	}
+	installed, err := releaseExists(cfg, op.Release)
+	if err != nil {
+		return fmt.Errorf("checking release %q history: %w", op.Release, err)
+	}
+	if !installed {
+		if op.IgnoreNotFoundOrDefault() {
+			e.Log.Info("release not found, nothing to uninstall", "release", op.Release, "namespace", namespace)
+			return nil
+		}
+		return fmt.Errorf("uninstalling release %q: release not found", op.Release)
+	}
+
+	client := action.NewUninstall(cfg)
+	client.IgnoreNotFound = op.IgnoreNotFoundOrDefault()
+	// Wait until the release's resources are gone, matching the other
+	// delete forms' delete-and-wait semantics.
+	client.WaitStrategy = kube.StatusWatcherStrategy
+	client.Timeout = spec.DefaultTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		client.Timeout = time.Until(deadline)
+	}
+	e.Log.Info("helm uninstall", "release", op.Release, "namespace", namespace)
+	res, err := client.Run(op.Release)
+	if err != nil {
+		return fmt.Errorf("uninstalling release %q: %w", op.Release, err)
+	}
+	if res != nil && res.Info != "" {
+		e.Log.Info("helm uninstalled", "release", op.Release, "note", res.Info)
+		return nil
+	}
+	e.Log.Info("helm uninstalled", "release", op.Release)
+	return nil
 }
 
 // releaseExists reports whether the release has any history (the
@@ -150,18 +221,18 @@ func releaseExists(cfg *action.Configuration, release string) (bool, error) {
 	return true, nil
 }
 
-// helmValues merges valuesFrom files in order, then inline values on top;
+// helmValues merges valuesFrom sources in order, then inline values on top;
 // later sources override earlier ones.
-func (e *Executor) helmValues(op *spec.HelmOp) (map[string]any, error) {
+func (e *Executor) helmValues(ctx context.Context, op *spec.HelmOp) (map[string]any, error) {
 	merged := map[string]any{}
-	for _, src := range op.ValuesFrom {
-		raw, err := os.ReadFile(src.File)
+	for i, src := range op.ValuesFrom {
+		raw, origin, err := readValuesSource(ctx, src)
 		if err != nil {
-			return nil, fmt.Errorf("reading values file: %w", err)
+			return nil, fmt.Errorf("valuesFrom[%d]: %w", i, err)
 		}
 		vals, err := spec.DecodeYAMLMap(raw)
 		if err != nil {
-			return nil, fmt.Errorf("parsing values file %s: %w", src.File, err)
+			return nil, fmt.Errorf("parsing values from %s: %w", origin, err)
 		}
 		merged = mergeMaps(merged, vals)
 	}
@@ -169,6 +240,15 @@ func (e *Executor) helmValues(op *spec.HelmOp) (map[string]any, error) {
 		merged = mergeMaps(merged, op.Values)
 	}
 	return merged, nil
+}
+
+func readValuesSource(ctx context.Context, src spec.ValuesSource) (raw []byte, origin string, err error) {
+	if src.URL != "" {
+		raw, err := fetchURL(ctx, src.URL)
+		return raw, src.URL, err
+	}
+	raw, err = os.ReadFile(src.File)
+	return raw, src.File, err
 }
 
 // mergeMaps deep-merges b over a (Helm's values merge semantics).

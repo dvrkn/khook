@@ -79,6 +79,24 @@ func TestValidate(t *testing.T) {
 			},
 			"valuesFrom[0]",
 		},
+		{
+			"helm valuesFrom with file and url",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Helm = &HelmOp{Chart: "c", Repo: "https://x",
+					ValuesFrom: []ValuesSource{{File: "v.yaml", URL: "https://example.com/v.yaml"}}}
+			},
+			"exactly one of file, url",
+		},
+		{
+			"helm valuesFrom non-http url",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Helm = &HelmOp{Chart: "c", Repo: "https://x",
+					ValuesFrom: []ValuesSource{{URL: "ftp://example.com/v.yaml"}}}
+			},
+			"url must be HTTP(S)",
+		},
 		{"apply no manifests", func(d *Document) { d.Steps[0].Apply.Manifests = nil }, "at least one source"},
 		{
 			"apply createNamespace without namespace",
@@ -96,7 +114,7 @@ func TestValidate(t *testing.T) {
 				d.Steps[0].Apply = nil
 				d.Steps[0].Delete = &DeleteOp{}
 			},
-			"exactly one of manifests or resource",
+			"exactly one of manifests, resource, or release",
 		},
 		{
 			"delete both forms",
@@ -104,7 +122,31 @@ func TestValidate(t *testing.T) {
 				d.Steps[0].Apply = nil
 				d.Steps[0].Delete = &DeleteOp{Resource: "pods", Manifests: []ManifestSource{{Inline: "x"}}}
 			},
-			"exactly one of manifests or resource",
+			"exactly one of manifests, resource, or release",
+		},
+		{
+			"delete release with resource",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Delete = &DeleteOp{Release: "argocd", Resource: "pods"}
+			},
+			"exactly one of manifests, resource, or release",
+		},
+		{
+			"delete release with selector",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Delete = &DeleteOp{Release: "argocd", Selector: "a=b"}
+			},
+			"apply only to the resource form",
+		},
+		{
+			"delete release with allNamespaces",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Delete = &DeleteOp{Release: "argocd", AllNamespaces: true}
+			},
+			"apply only to the resource form",
 		},
 		{
 			"delete ns and allNamespaces",

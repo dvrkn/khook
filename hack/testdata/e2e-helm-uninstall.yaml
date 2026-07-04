@@ -1,0 +1,12 @@
+# E2E: delete:'s release form — uninstall a Helm release; an absent release
+# is success (ignoreNotFound defaults to true), so re-applying is idempotent.
+apiVersion: khook.io/v1
+kind: Khook
+metadata:
+  name: e2e-helm-uninstall
+
+steps:
+  - name: remove-local-chart
+    delete:
+      release: e2e-local
+      namespace: ${HELM_NS}

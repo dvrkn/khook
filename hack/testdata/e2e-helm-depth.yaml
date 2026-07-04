@@ -1,0 +1,16 @@
+# E2E: helm path-form chart source — install a chart from a local directory.
+apiVersion: khook.io/v1
+kind: Khook
+metadata:
+  name: e2e-helm-depth
+
+steps:
+  - name: local-chart
+    helm:
+      chart: ${CHART_PATH}
+      release: e2e-local
+      namespace: ${HELM_NS}
+      createNamespace: true
+      wait: true
+      values:
+        greeting: from-khook

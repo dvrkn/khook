@@ -66,14 +66,18 @@ func unknown(err error) Assessment {
 
 func (e *Executor) planHelm(ctx context.Context, step *spec.Step) Assessment {
 	op := step.Helm
-	release := op.ReleaseName(step.Name)
-	namespace := op.TargetNamespace()
-
-	cfg, err := e.helmConfig(namespace)
+	src, err := spec.ParseChartSource(op)
 	if err != nil {
 		return unknown(err)
 	}
-	a := planHelmRelease(cfg, op, release)
+	release := op.ReleaseName(step.Name)
+	namespace := op.TargetNamespace()
+
+	cfg, err := e.helmConfig(namespace, src)
+	if err != nil {
+		return unknown(err)
+	}
+	a := planHelmRelease(cfg, op, release, src)
 	if a.Action == ActionInstall {
 		if note := e.namespaceNote(ctx, namespace, op.CreateNamespace); note != "" {
 			a.Detail += "; " + note
@@ -84,10 +88,10 @@ func (e *Executor) planHelm(ctx context.Context, step *spec.Step) Assessment {
 
 // planHelmRelease decides install/upgrade/skip from the release history —
 // the same check runHelm makes before choosing an action.
-func planHelmRelease(cfg *action.Configuration, op *spec.HelmOp, release string) Assessment {
+func planHelmRelease(cfg *action.Configuration, op *spec.HelmOp, release string, src *spec.ChartSource) Assessment {
 	last, err := cfg.Releases.Last(release)
 	if errors.Is(err, driver.ErrReleaseNotFound) {
-		return Assessment{ActionInstall, fmt.Sprintf("release %q not found; installs %s", release, chartRef(op))}
+		return Assessment{ActionInstall, fmt.Sprintf("release %q not found; installs %s", release, src)}
 	}
 	if err != nil {
 		return unknown(fmt.Errorf("reading release %q history: %w", release, err))
@@ -100,16 +104,7 @@ func planHelmRelease(cfg *action.Configuration, op *spec.HelmOp, release string)
 	if op.SkipIfInstalled {
 		return Assessment{ActionSkip, "skipIfInstalled: " + current}
 	}
-	return Assessment{ActionUpgrade, fmt.Sprintf("%s -> %s", current, chartRef(op))}
-}
-
-// chartRef renders "chart@version" with the spec's target version.
-func chartRef(op *spec.HelmOp) string {
-	version := op.Version
-	if version == "" {
-		version = "latest"
-	}
-	return op.Chart + "@" + version
+	return Assessment{ActionUpgrade, fmt.Sprintf("%s -> %s", current, src)}
 }
 
 func (e *Executor) planApply(ctx context.Context, step *spec.Step) Assessment {
@@ -169,6 +164,9 @@ func (e *Executor) planApply(ctx context.Context, step *spec.Step) Assessment {
 
 func (e *Executor) planDelete(ctx context.Context, step *spec.Step) Assessment {
 	op := step.Delete
+	if op.Release != "" {
+		return e.planHelmUninstall(op)
+	}
 	if len(op.Manifests) > 0 {
 		return e.planDeleteByManifests(ctx, op)
 	}
@@ -210,6 +208,35 @@ func (e *Executor) planDelete(ctx context.Context, step *spec.Step) Assessment {
 		return Assessment{ActionUnknown, detail + " — step fails unless an earlier step creates a match (ignoreNotFound: false)"}
 	}
 	return Assessment{ActionDelete, fmt.Sprintf("deletes %d matching object(s)", len(list.Items))}
+}
+
+// planHelmUninstall assesses delete:'s release form from the release
+// history, mirroring runHelmUninstall's decision.
+func (e *Executor) planHelmUninstall(op *spec.DeleteOp) Assessment {
+	cfg, err := e.helmConfig(op.TargetNamespace(), nil)
+	if err != nil {
+		return unknown(err)
+	}
+	return planHelmUninstallRelease(cfg, op)
+}
+
+func planHelmUninstallRelease(cfg *action.Configuration, op *spec.DeleteOp) Assessment {
+	last, err := cfg.Releases.Last(op.Release)
+	if errors.Is(err, driver.ErrReleaseNotFound) {
+		if op.IgnoreNotFoundOrDefault() {
+			return Assessment{ActionNone, fmt.Sprintf("release %q already absent", op.Release)}
+		}
+		return Assessment{ActionUnknown, fmt.Sprintf("release %q not found — step fails unless an earlier step installs it (ignoreNotFound: false)", op.Release)}
+	}
+	if err != nil {
+		return unknown(fmt.Errorf("reading release %q history: %w", op.Release, err))
+	}
+	detail := fmt.Sprintf("uninstalls release %q", op.Release)
+	if rel, ok := last.(*releasev1.Release); ok {
+		detail = fmt.Sprintf("uninstalls release %q revision %d (%s-%s)",
+			op.Release, rel.Version, rel.Chart.Metadata.Name, rel.Chart.Metadata.Version)
+	}
+	return Assessment{ActionDelete, detail}
 }
 
 func (e *Executor) planDeleteByManifests(ctx context.Context, op *spec.DeleteOp) Assessment {

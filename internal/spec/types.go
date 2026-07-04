@@ -173,11 +173,13 @@ func (s *Step) EffectiveOnError(d Defaults) string {
 }
 
 // HelmOp installs or upgrades a chart release (the release history decides
-// which).
+// which). The shape of Chart implies its source — bare name in Repo,
+// oci:// reference, or local path; ParseChartSource owns that logic.
 type HelmOp struct {
 	Chart           string         `json:"chart"`
-	Repo            string         `json:"repo"`
+	Repo            string         `json:"repo,omitempty"`
 	Version         string         `json:"version,omitempty"`
+	Auth            *HelmAuth      `json:"auth,omitempty"`
 	Release         string         `json:"release,omitempty"`
 	Namespace       string         `json:"namespace,omitempty"`
 	CreateNamespace bool           `json:"createNamespace,omitempty"`
@@ -186,6 +188,13 @@ type HelmOp struct {
 	Wait            bool           `json:"wait,omitempty"`
 	Values          map[string]any `json:"values,omitempty"`
 	ValuesFrom      []ValuesSource `json:"valuesFrom,omitempty"`
+}
+
+// HelmAuth is basic-auth credentials for a private chart repository or OCI
+// registry — the block alternative to URL userinfo (mutually exclusive).
+type HelmAuth struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // ReleaseName defaults to the step name.
@@ -204,9 +213,20 @@ func (h *HelmOp) TargetNamespace() string {
 	return "default"
 }
 
-// ValuesSource is one entry of valuesFrom (v1: file only; url is roadmap).
+// ValuesSource is one entry of valuesFrom: exactly one of File / URL.
 type ValuesSource struct {
-	File string `json:"file"`
+	File string `json:"file,omitempty"`
+	URL  string `json:"url,omitempty"`
+}
+
+func (v *ValuesSource) sourceCount() int {
+	n := 0
+	for _, set := range []bool{v.File != "", v.URL != ""} {
+		if set {
+			n++
+		}
+	}
+	return n
 }
 
 // ManifestSource holds exactly one of Inline / File / URL.
@@ -235,16 +255,29 @@ type ApplyOp struct {
 	ServerSide      bool             `json:"serverSide,omitempty"`
 }
 
-// DeleteOp removes resources: either by manifests or by reference/selector.
+// DeleteOp removes resources: by manifests, by reference/selector, or —
+// the release form — by uninstalling a Helm release.
 type DeleteOp struct {
 	Manifests []ManifestSource `json:"manifests,omitempty"`
 
-	Resource       string `json:"resource,omitempty"`
+	Resource string `json:"resource,omitempty"`
+
+	Release string `json:"release,omitempty"`
+
 	Namespace      string `json:"namespace,omitempty"`
 	AllNamespaces  bool   `json:"allNamespaces,omitempty"`
 	Selector       string `json:"selector,omitempty"`
 	FieldSelector  string `json:"fieldSelector,omitempty"`
 	IgnoreNotFound *bool  `json:"ignoreNotFound,omitempty"`
+}
+
+// TargetNamespace defaults to "default" (release form only — the other
+// forms treat an empty namespace as "not scoped").
+func (d *DeleteOp) TargetNamespace() string {
+	if d.Namespace != "" {
+		return d.Namespace
+	}
+	return "default"
 }
 
 // IgnoreNotFoundOrDefault defaults to true.

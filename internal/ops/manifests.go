@@ -60,25 +60,27 @@ func readSource(ctx context.Context, src spec.ManifestSource) (raw []byte, origi
 		}
 		return raw, src.File, nil
 	case src.URL != "":
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, src.URL, nil)
-		if err != nil {
-			return nil, src.URL, err
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return nil, src.URL, err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil, src.URL, fmt.Errorf("fetching %s: HTTP %d", src.URL, resp.StatusCode)
-		}
-		raw, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, src.URL, err
-		}
-		return raw, src.URL, nil
+		raw, err := fetchURL(ctx, src.URL)
+		return raw, src.URL, err
 	}
 	return nil, "", fmt.Errorf("manifest source is empty")
+}
+
+// fetchURL GETs a URL and returns its body; a non-200 status is an error.
+func fetchURL(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching %s: HTTP %d", url, resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
 }
 
 // splitDocuments splits multi-document YAML on "---" boundaries.

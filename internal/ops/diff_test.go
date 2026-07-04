@@ -34,8 +34,12 @@ func loadTestChart(t *testing.T) *chartv2.Chart {
 
 func TestDiffHelmInstallRendersAllNew(t *testing.T) {
 	cfg := diffConfig(t)
-	op := &spec.HelmOp{Chart: "testchart", Version: "0.1.0"}
-	got, err := diffHelmRelease(context.Background(), cfg, op, "web", loadTestChart(t), nil, action.ChartPathOptions{})
+	op := &spec.HelmOp{Chart: "testchart", Repo: "https://charts.example.com", Version: "0.1.0"}
+	src, err := spec.ParseChartSource(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := diffHelmRelease(context.Background(), cfg, op, src, "web", loadTestChart(t), nil, action.ChartPathOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,8 +64,12 @@ func TestDiffHelmUpgradeShowsManifestChange(t *testing.T) {
 	if err := cfg.Releases.Create(rel); err != nil {
 		t.Fatal(err)
 	}
-	op := &spec.HelmOp{Chart: "testchart"}
-	got, err := diffHelmRelease(context.Background(), cfg, op, "web", loadTestChart(t),
+	op := &spec.HelmOp{Chart: "testchart", Repo: "https://charts.example.com"}
+	src, err := spec.ParseChartSource(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := diffHelmRelease(context.Background(), cfg, op, src, "web", loadTestChart(t),
 		map[string]any{"greeting": "new"}, action.ChartPathOptions{})
 	if err != nil {
 		t.Fatal(err)

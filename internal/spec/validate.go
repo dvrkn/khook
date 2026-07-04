@@ -139,18 +139,16 @@ func validateAction(step *Step) error {
 }
 
 func validateHelm(op *HelmOp) error {
-	if op.Chart == "" {
-		return errors.New("helm: chart is required")
-	}
-	if op.Repo == "" {
-		return errors.New("helm: repo is required")
-	}
-	if !strings.HasPrefix(op.Repo, "http://") && !strings.HasPrefix(op.Repo, "https://") {
-		return fmt.Errorf("helm: repo must be an HTTP(S) URL, got %q", op.Repo)
+	// ParseChartSource owns every chart/repo/version/auth rule.
+	if _, err := ParseChartSource(op); err != nil {
+		return err
 	}
 	for i, src := range op.ValuesFrom {
-		if src.File == "" {
-			return fmt.Errorf("helm: valuesFrom[%d] must set file", i)
+		if src.sourceCount() != 1 {
+			return fmt.Errorf("helm: valuesFrom[%d] must set exactly one of file, url", i)
+		}
+		if src.URL != "" && !strings.HasPrefix(src.URL, "http://") && !strings.HasPrefix(src.URL, "https://") {
+			return fmt.Errorf("helm: valuesFrom[%d] url must be HTTP(S), got %q", i, src.URL)
 		}
 	}
 	return nil
@@ -176,16 +174,26 @@ func validateApply(op *ApplyOp) error {
 }
 
 func validateDelete(op *DeleteOp) error {
-	byManifests := len(op.Manifests) > 0
-	byResource := op.Resource != ""
-	if byManifests == byResource {
-		return errors.New("delete: exactly one of manifests or resource is required")
+	forms := 0
+	for _, set := range []bool{len(op.Manifests) > 0, op.Resource != "", op.Release != ""} {
+		if set {
+			forms++
+		}
 	}
-	if byManifests {
+	if forms != 1 {
+		return errors.New("delete: exactly one of manifests, resource, or release is required")
+	}
+	switch {
+	case len(op.Manifests) > 0:
 		if op.Selector != "" || op.FieldSelector != "" || op.AllNamespaces {
 			return errors.New("delete: selector, fieldSelector, and allNamespaces apply only to the resource form")
 		}
 		return validateManifests("delete", op.Manifests)
+	case op.Release != "":
+		if op.Selector != "" || op.FieldSelector != "" || op.AllNamespaces {
+			return errors.New("delete: selector, fieldSelector, and allNamespaces apply only to the resource form")
+		}
+		return nil
 	}
 	if op.Namespace != "" && op.AllNamespaces {
 		return errors.New("delete: namespace and allNamespaces are mutually exclusive")

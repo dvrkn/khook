@@ -14,7 +14,10 @@ import (
 
 func (e *Executor) runDelete(ctx context.Context, step *spec.Step) error {
 	op := step.Delete
-	if len(op.Manifests) > 0 {
+	switch {
+	case op.Release != "":
+		return e.runHelmUninstall(ctx, op)
+	case len(op.Manifests) > 0:
 		return e.deleteByManifests(ctx, op)
 	}
 	return e.deleteByResource(ctx, op)

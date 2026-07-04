@@ -148,9 +148,10 @@ Declarative install-or-upgrade (the release history decides which; v0-proven).
 
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
-| `chart` | string | yes | | chart name in `repo` |
-| `repo` | URL | yes | | HTTP(S) chart repository URL; no repo "name" needed |
-| `version` | string | no | latest | exact chart version (recommended: always pin) |
+| `chart` | string | yes | | chart source — bare name, `oci://` reference, or local path; see [Chart sources](#chart-sources) |
+| `repo` | URL | bare-name charts | | HTTP(S) chart repository URL; no repo "name" needed |
+| `version` | string | no | latest | exact chart version (recommended: always pin); may instead be written inline — `chart: name:1.2.3` |
+| `auth` | map | no | | `username:` + `password:` for a private repo/registry; see [Private sources](#private-sources--auth) |
 | `release` | string | no | step `name` | Helm release name |
 | `namespace` | string | no | `default` | target namespace |
 | `createNamespace` | bool | no | `false` | create namespace if missing |
@@ -158,7 +159,7 @@ Declarative install-or-upgrade (the release history decides which; v0-proven).
 | `atomic` | bool | no | `false` | roll back on failure |
 | `wait` | bool | no | `false` | wait for resources ready before step succeeds |
 | `values` | map | no | | inline values (merged over chart defaults) |
-| `valuesFrom` | list | no | | ordered list of `- file: path` entries; later entries and `values` override earlier ones |
+| `valuesFrom` | list | no | | ordered list of sources, each exactly one of `- file: path` / `- url: https://...`; later entries and `values` override earlier ones |
 
 ```yaml
 helm:
@@ -174,8 +175,64 @@ helm:
       enabled: true
 ```
 
-**(roadmap)** `oci://` charts, local chart paths, `- url:` in `valuesFrom`,
-`reuseValues`, uninstall, rollback, private repo auth.
+### Chart sources
+
+The shape of `chart:` implies where the chart comes from — there is no
+discriminator field:
+
+```yaml
+chart: cilium                                  # bare name — resolved in repo: (required)
+chart: cilium:1.18.4                           # same, version inline (names cannot contain ":")
+chart: oci://ghcr.io/org/charts/my-app:1.2.3   # OCI registry reference; repo: forbidden
+chart: ./charts/my-app                         # local directory
+chart: ./charts/my-app-1.2.3.tgz               # packaged chart
+```
+
+Rules:
+
+- A **bare name** requires `repo:`; the other forms forbid it.
+- An **`oci://` reference** versions itself with an inline `:tag` (or
+  `@digest`), or via `version:` — setting both is an error.
+- A **local path** must start with `./`, `../`, or `/` and forbids
+  `version:` (the path already pins the chart) and any auth.
+- The inline `name:version` sugar and the `version:` field are mutually
+  exclusive in every form.
+
+### Private sources — auth
+
+Credentials come either inline as URL userinfo or as an `auth:` block —
+never both. Pass secrets as variables (`KHOOK_SECRET_*` values are redacted
+from all output); khook strips inline credentials from every log, plan,
+diff, and error line regardless.
+
+```yaml
+# auth: block — raw values, no encoding needed
+helm:
+  chart: oci://123456789.dkr.ecr.us-east-1.amazonaws.com/charts/my-app:1.2.3
+  auth:
+    username: AWS
+    password: ${ECR_TOKEN}
+
+# inline userinfo — URL-encode anything special: ${VAR|urlquery}
+helm:
+  chart: my-app
+  repo: https://${CHART_USER}:${CHART_PASS|urlquery}@charts.corp.example
+```
+
+The inline form must be a full `<username>:<password>@` pair, URL-encoded
+where the values contain URL-special characters (`|urlquery` does this; ECR
+tokens, being base64, always need it inline — prefer the `auth:` block for
+such tokens).
+
+**ECR recipe** — khook never calls AWS itself (see roadmap non-goals);
+whatever runs khook mints the token:
+
+```bash
+export KHOOK_SECRET_ECR_TOKEN="$(aws ecr get-login-password)"
+```
+
+The token is ordinary basic auth with username `AWS`, as in the `auth:`
+example above.
 
 ## `apply:` — declaratively apply manifests
 
@@ -207,7 +264,9 @@ apply:
 
 ## `delete:` — remove resources
 
-Two mutually exclusive forms.
+Three mutually exclusive forms. `helm:` owns presence, `delete:` owns
+absence — uninstalling a Helm release is the third form here, not a mode of
+`helm:`.
 
 **By manifests** (delete what these define):
 
@@ -233,6 +292,24 @@ delete:
 delete:
   resource: daemonset/aws-node
   namespace: kube-system
+```
+
+**By release** (helm uninstall):
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `release` | string | yes | Helm release name |
+| `namespace` | string | no (`default`) | the release's namespace |
+| `ignoreNotFound` | bool | no (`true`) | an absent release is success, not failure |
+
+The step waits until the release's resources are gone (like the other
+forms), bounded by the step `timeout`. `selector`, `fieldSelector`, and
+`allNamespaces` do not apply.
+
+```yaml
+delete:
+  release: nginx-ingress
+  namespace: ingress
 ```
 
 ## `wait:` — block until a condition holds
@@ -329,7 +406,10 @@ What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
 |---|---|---|
 | `helm repo add` + `helm install`/`upgrade` | `helm:` | **v1 core** |
 | `helm install --atomic/--wait/--create-namespace` | `helm.atomic/wait/createNamespace` | **v1 core** |
-| `helm install -f values.yaml --set k=v` | `helm.valuesFrom` / `helm.values` | **v1 core** |
+| `helm install -f values.yaml --set k=v` | `helm.valuesFrom` (file or url) / `helm.values` | **v1 core** |
+| `helm install oci://...` / local chart | `helm.chart: oci://...` / path | **v1 core** |
+| `helm uninstall` | `delete.release` | **v1 core** |
+| `helm install --username/--password` / `helm registry login` | `helm.auth` / URL userinfo | **v1 core** |
 | `kubectl apply -f file/url/-` | `apply:` | **v1 core** |
 | `kubectl apply --server-side` | `apply.serverSide` | **v1 core** |
 | `kubectl delete -f` / by selector | `delete:` | **v1 core** |
@@ -337,8 +417,7 @@ What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
 | `kubectl rollout restart/status` | `rollout:` | **v1 core** |
 | `kubectl create namespace` | `createNamespace: true` / `apply:` | **v1 core** |
 | arbitrary in-cluster commands | `job:` (container to completion) | **v1 core** |
-| `helm install oci://...` / local chart | `helm.chart: oci://...` / path | roadmap P2 |
-| `helm uninstall` / `rollback` | `helm.uninstall` (shape TBD) | roadmap P2 |
+| `helm rollback` | — `atomic:` covers failed upgrades; re-applying the spec is the recovery path | non-goal |
 | `kubectl apply -k` (kustomize) | `apply.kustomize` (shape TBD) | roadmap P2 |
 | `kubectl apply --prune` / `patch` | `apply.prune` / `patch:` | roadmap P2 |
 | `kubectl label` / `annotate` | `apply:` a minimal manifest (existing objects are merge-patched, so `metadata.labels`/`annotations` land without touching the rest) | **v1 core** |
@@ -362,6 +441,17 @@ they are not re-litigated:
 - **Helm flattened**: `repo:` is just the URL (no repository name — the SDK
   doesn't need a repo cache); `atomic:`/`wait:` sit directly on the op (no
   `flags:` block); `release:` defaults to the step name.
+- **Chart form implies source** — one `chart:` field covers repo charts,
+  `oci://` references, and local paths; no `type:`/`sourceRef:` discriminator.
+- **Uninstall lives on `delete:`** (`delete.release`), not on `helm:` — the
+  step types split by desired state (present vs absent), so a `helm:` step is
+  always declarative install-or-upgrade and never flips meaning on a flag.
+- **No `reuseValues`** — carrying a prior release's values forward makes a
+  run's outcome depend on cluster state, breaking "the same spec twice gives
+  the same result". The spec is the sole source of truth for values;
+  `skipIfInstalled` covers "don't touch an existing release".
+- **No `helm rollback`** — `atomic:` handles failed upgrades; recovery
+  otherwise is re-applying a known-good spec, not imperative history surgery.
 - **`values:` is a plain map** (the common case); `valuesFrom:` is a Flux-style
   list for external values. `--set`-style overrides live on the CLI, not in
   the spec.

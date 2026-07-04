@@ -31,9 +31,6 @@ the [README](README.md); when an item here ships, it moves there.
 *Goal: cover the real bootstrap cases (`examples/real-case.yaml` and beyond)
 without escape hatches.*
 
-- [ ] **Helm depth**: OCI registry charts (`oci://`), local chart paths/tarballs,
-      `- url:` in `valuesFrom`, `reuseValues`, uninstall action, private repo
-      auth (basic + ECR).
 - [ ] **Kubectl depth**: prune/patch actions, `waitFor` shorthand on apply (apply
       + wait in one step), kustomize source (`sigs.k8s.io/kustomize` comes in
       transitively with the Helm SDK anyway), `wait.for: jsonpath=...`.

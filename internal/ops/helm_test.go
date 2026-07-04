@@ -1,15 +1,20 @@
 package ops
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"helm.sh/helm/v4/pkg/action"
 	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
+	chartutil "helm.sh/helm/v4/pkg/chart/v2/util"
 	kubefake "helm.sh/helm/v4/pkg/kube/fake"
 	"helm.sh/helm/v4/pkg/release/common"
 	releasev1 "helm.sh/helm/v4/pkg/release/v1"
@@ -80,7 +85,7 @@ func TestHelmValuesMergeOrder(t *testing.T) {
 		ValuesFrom: []spec.ValuesSource{{File: base}, {File: override}},
 		Values:     map[string]any{"nested": map[string]any{"y": "inline"}},
 	}
-	got, err := e.helmValues(op)
+	got, err := e.helmValues(t.Context(), op)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +95,68 @@ func TestHelmValuesMergeOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestHelmValuesFromURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/values.yaml":
+			fmt.Fprint(w, "a: url\nb: url\n")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	e, _, _ := testExecutor(t)
+	op := &spec.HelmOp{
+		ValuesFrom: []spec.ValuesSource{{URL: srv.URL + "/values.yaml"}},
+		Values:     map[string]any{"b": "inline"},
+	}
+	got, err := e.helmValues(t.Context(), op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"a": "url", "b": "inline"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	op = &spec.HelmOp{ValuesFrom: []spec.ValuesSource{{URL: srv.URL + "/missing.yaml"}}}
+	if _, err := e.helmValues(t.Context(), op); err == nil || !strings.Contains(err.Error(), "HTTP 404") {
+		t.Fatalf("want HTTP 404 error, got %v", err)
+	}
+}
+
+func TestLoadChartLocalDirectory(t *testing.T) {
+	e, _, _ := testExecutor(t)
+	op := &spec.HelmOp{Chart: "./testdata/testchart", Values: map[string]any{"greeting": "hi"}}
+	chrt, values, _, err := e.loadChart(t.Context(), memoryConfig(t), op, mustChartSource(t, op))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chrt.Name() != "testchart" {
+		t.Fatalf("chart name = %q, want testchart", chrt.Name())
+	}
+	if values["greeting"] != "hi" {
+		t.Fatalf("values not merged: %v", values)
+	}
+}
+
+func TestLoadChartLocalTarball(t *testing.T) {
+	e, _, _ := testExecutor(t)
+	tgz, err := chartutil.Save(loadTestChart(t), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	op := &spec.HelmOp{Chart: tgz}
+	chrt, _, _, err := e.loadChart(t.Context(), memoryConfig(t), op, mustChartSource(t, op))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chrt.Name() != "testchart" || chrt.Metadata.Version != "0.1.0" {
+		t.Fatalf("got %s-%s, want testchart-0.1.0", chrt.Name(), chrt.Metadata.Version)
 	}
 }
 

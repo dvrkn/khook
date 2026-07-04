@@ -40,21 +40,25 @@ func (e *Executor) Diff(ctx context.Context, step *spec.Step) (string, error) {
 
 func (e *Executor) diffHelm(ctx context.Context, step *spec.Step) (string, error) {
 	op := step.Helm
-	cfg, err := e.helmConfig(op.TargetNamespace())
+	src, err := spec.ParseChartSource(op)
 	if err != nil {
 		return "", err
 	}
-	chrt, values, pathOpts, err := e.loadChart(op)
+	cfg, err := e.helmConfig(op.TargetNamespace(), src)
 	if err != nil {
 		return "", err
 	}
-	return diffHelmRelease(ctx, cfg, op, op.ReleaseName(step.Name), chrt, values, pathOpts)
+	chrt, values, pathOpts, err := e.loadChart(ctx, cfg, op, src)
+	if err != nil {
+		return "", err
+	}
+	return diffHelmRelease(ctx, cfg, op, src, op.ReleaseName(step.Name), chrt, values, pathOpts)
 }
 
 // diffHelmRelease dry-run renders the target manifest (server dry-run: real
 // capabilities and lookups, no mutations, nothing stored) and diffs it
 // against the manifest of the release's last revision.
-func diffHelmRelease(ctx context.Context, cfg *action.Configuration, op *spec.HelmOp, release string, chrt *chartv2.Chart, values map[string]any, pathOpts action.ChartPathOptions) (string, error) {
+func diffHelmRelease(ctx context.Context, cfg *action.Configuration, op *spec.HelmOp, src *spec.ChartSource, release string, chrt *chartv2.Chart, values map[string]any, pathOpts action.ChartPathOptions) (string, error) {
 	namespace := op.TargetNamespace()
 	liveManifest := ""
 	liveLabel := fmt.Sprintf("live/release %s (not installed)", release)
@@ -93,14 +97,14 @@ func diffHelmRelease(ctx context.Context, cfg *action.Configuration, op *spec.He
 		rendered, err = client.RunWithContext(ctx, chrt, values)
 	}
 	if err != nil {
-		return "", fmt.Errorf("dry-run rendering %s: %w", chartRef(op), err)
+		return "", fmt.Errorf("dry-run rendering %s: %w", src, err)
 	}
 	rel, ok := rendered.(*releasev1.Release)
 	if !ok {
 		return "", fmt.Errorf("unexpected dry-run release type %T", rendered)
 	}
 	return unifiedDiff(liveManifest, rel.Manifest, liveLabel,
-		fmt.Sprintf("planned/release %s (%s)", release, chartRef(op)))
+		fmt.Sprintf("planned/release %s (%s)", release, src))
 }
 
 func (e *Executor) diffApply(ctx context.Context, step *spec.Step) (string, error) {

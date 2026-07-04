@@ -10,6 +10,8 @@
 #   5. cluster-aware plan predicts upgrade and plan --diff reports no changes,
 #      then re-applies the same spec to assert idempotency (helm upgrade path)
 #   6. khook apply hack/testdata/e2e-ops.yaml (wait / rollout / delete / job coverage)
+#   7. helm depth: installs a chart from a local path, then uninstalls the
+#      release via delete.release and asserts the re-run is a no-op
 #
 # Usage:
 #   ./hack/e2e.sh                 # full run, cluster deleted at the end
@@ -71,6 +73,8 @@ EXAMPLE_VARS=(
   --set NAMESPACE_NAME_TO_CREATE="${DEMO_NS}"
   --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}"
   --set NAMESPACE=e2e-vars --set APP_NAME=e2e-app
+  --set AWS_ACCOUNT_ID=123456789012 --set ECR_TOKEN=e2e-token
+  --set CHART_USER=e2e-user --set CHART_PASS=e2e-pass
 )
 for spec in "${REPO_ROOT}"/examples/*.yaml; do
   [[ "${spec}" == *lambda* ]] && continue
@@ -163,6 +167,31 @@ k -n "${OPS_NS}" get configmap doomed >/dev/null 2>&1 && fail "configmap doomed 
 k -n "${OPS_NS}" get deployment echo >/dev/null 2>&1 && fail "deployment echo should have been deleted"
 k -n "${OPS_NS}" get configmap conditional-extra >/dev/null 2>&1 && fail "configmap conditional-extra should not exist (when: is false)"
 k -n "${OPS_NS}" get configmap conditional-after >/dev/null || fail "configmap conditional-after missing (excluded step must satisfy needs)"
+
+# --- helm depth: local chart path + release uninstall ------------------------
+HELM_DEPTH_NS="e2e-helm-depth"
+
+log "khook apply hack/testdata/e2e-helm-depth.yaml (local chart path)"
+"${KHOOK}" apply --kubeconfig "${KUBECONFIG_FILE}" \
+  -f "${REPO_ROOT}/hack/testdata/e2e-helm-depth.yaml" \
+  --set CHART_PATH="${REPO_ROOT}/hack/testdata/e2e-chart" \
+  --set HELM_NS="${HELM_DEPTH_NS}"
+greeting="$(k -n "${HELM_DEPTH_NS}" get configmap e2e-local-cm -o jsonpath='{.data.greeting}')"
+[[ "${greeting}" == "from-khook" ]] || fail "local chart values not applied, got '${greeting}'"
+
+log "delete.release uninstalls the release; the re-run is a no-op"
+uninstall_spec() {
+  "${KHOOK}" "$1" --kubeconfig "${KUBECONFIG_FILE}" \
+    -f "${REPO_ROOT}/hack/testdata/e2e-helm-uninstall.yaml" \
+    --set HELM_NS="${HELM_DEPTH_NS}"
+}
+plan_out="$(uninstall_spec plan)"
+grep -q 'uninstalls release "e2e-local"' <<<"${plan_out}" || fail "plan should predict the uninstall, got: ${plan_out}"
+uninstall_spec apply
+k -n "${HELM_DEPTH_NS}" get configmap e2e-local-cm >/dev/null 2>&1 && fail "configmap e2e-local-cm should be gone after uninstall"
+uninstall_spec apply
+plan_out="$(uninstall_spec plan)"
+grep -q 'already absent' <<<"${plan_out}" || fail "plan after uninstall should report already absent, got: ${plan_out}"
 
 # --- failure semantics: a failing step must exit 1 and skip dependents -------
 log "asserting failure exit code"

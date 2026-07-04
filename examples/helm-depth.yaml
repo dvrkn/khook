@@ -1,0 +1,45 @@
+# Every helm chart-source form in one spec: oci:// references (with inline
+# credentials or an auth: block), local chart paths, values from a URL, and
+# release uninstall via delete:.
+apiVersion: khook.io/v1
+kind: Khook
+metadata:
+  name: helm-depth-demo
+
+steps:
+  # OCI chart from a private ECR registry; the wrapper mints the token:
+  #   export KHOOK_SECRET_ECR_TOKEN="$(aws ecr get-login-password)"
+  - name: platform-app
+    helm:
+      chart: oci://${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/charts/platform-app:1.4.0
+      namespace: platform
+      createNamespace: true
+      auth:
+        username: AWS
+        password: ${ECR_TOKEN}
+
+  # Private HTTP(S) repo with inline credentials (URL-encode special chars),
+  # chart version inline, values fetched over HTTP.
+  - name: internal-tool
+    helm:
+      chart: internal-tool:2.3.1
+      repo: https://${CHART_USER}:${CHART_PASS|urlquery}@charts.corp.example
+      namespace: tools
+      createNamespace: true
+      valuesFrom:
+        - url: https://config.corp.example/khook/internal-tool.yaml
+        - file: ./values/internal-tool-overrides.yaml
+
+  # A chart shipped alongside the spec — directory or .tgz.
+  - name: bundled-chart
+    helm:
+      chart: ./charts/bundled
+      namespace: default
+
+  # Uninstall a release a previous bootstrap installed; an absent release is
+  # success (ignoreNotFound defaults to true).
+  - name: remove-legacy-ingress
+    needs: [platform-app]
+    delete:
+      release: nginx-ingress
+      namespace: ingress
