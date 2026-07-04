@@ -118,3 +118,7 @@ go test ./...   # unit tests (engine, spec, executors against fakes)
 
 Contributions welcome — read [`AGENTS.md`](AGENTS.md) for repo conventions and
 the reading order.
+
+## License
+
+[MIT](LICENSE)
