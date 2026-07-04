@@ -2,7 +2,7 @@
 # Local preview:  cd docs && bundle install && bundle exec jekyll serve
 
 title: khook
-tagline: cloud-init for Kubernetes
+tagline: Declarative bootstrap for Kubernetes
 description: >-
   khook is a single static binary that takes a freshly created Kubernetes
   cluster from "API server answers" to "workloads can be deployed" — a

@@ -52,7 +52,7 @@ func NewRootCommand() *cobra.Command {
 	opts := &rootOptions{redact: &redactor{}}
 	root := &cobra.Command{
 		Use:           "khook",
-		Short:         "cloud-init for Kubernetes: initialize a fresh cluster from a declarative spec",
+		Short:         "Bootstrap a fresh Kubernetes cluster from a declarative spec",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

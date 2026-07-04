@@ -4,7 +4,7 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-**khook** — "cloud-init for Kubernetes." A single Go binary embedding the
+**khook** — declarative bootstrap for Kubernetes. A single Go binary embedding the
 Kubernetes and Helm SDKs that initializes a freshly created cluster from a
 declarative YAML spec (`apiVersion: khook.io/v1`, `kind: Khook`).
 

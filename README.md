@@ -2,7 +2,7 @@
 
 # ⚓ khook
 
-**cloud-init for Kubernetes.**
+**Declarative bootstrap for Kubernetes.**
 
 One static binary that takes a freshly created cluster from
 *"API server answers"* to *"workloads can be deployed"* — a declarative,

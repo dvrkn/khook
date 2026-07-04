@@ -1,4 +1,4 @@
-// khook is "cloud-init for Kubernetes": one static binary that initializes a
+// khook is declarative bootstrap for Kubernetes: one static binary that initializes a
 // freshly created cluster from a declarative YAML spec.
 package main
 

@@ -1,6 +1,6 @@
 # Roadmap — khook (Cluster Bootstrapper)
 
-> **Vision:** "cloud-init for Kubernetes." A single static binary that embeds the
+> **Vision:** declarative bootstrap for Kubernetes. A single static binary that embeds the
 > Kubernetes and Helm SDKs and turns a declarative YAML spec into a fully
 > initialized cluster — no `kubectl`, no `helm`, no shell scripts, no external
 > dependencies. Point it at a freshly created cluster (Terraform, eksctl, kind,

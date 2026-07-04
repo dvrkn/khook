@@ -600,7 +600,7 @@ rollout:
 ## `job:` — run a container to completion
 
 The escape hatch: anything the DSL does not model runs as a `batch/v1` Job —
-the "shell script" slot of the cloud-init analogy. khook creates the Job,
+the "run an arbitrary script" slot of the bootstrap. khook creates the Job,
 waits for it to finish (bounded by the step `timeout`), and on failure
 surfaces the pod's last log lines in the step error.
 
@@ -647,7 +647,7 @@ API server.
 
 ## Command coverage matrix
 
-What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
+What a cluster bootstrap needs, mapped to the DSL. Non-goals excluded
 (see ROADMAP.md).
 
 | CLI equivalent | khook | Status |
