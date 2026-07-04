@@ -58,7 +58,8 @@ bin/khook apply -f examples/simple.yaml \
 Variables: `${NAME}` / `${NAME:-default}` in the spec, supplied via `--set
 NAME=value`, `--var-file vars.yaml`, or environment variables prefixed
 `KHOOK_VAR_` (precedence in that order). Cluster access uses standard
-kubeconfig rules (`--kubeconfig`, `--context` to override).
+kubeconfig rules (`--kubeconfig`, `--context` to override). Full reference:
+[`docs/cli.md`](docs/cli.md).
 
 ## Development
 

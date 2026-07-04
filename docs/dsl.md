@@ -212,13 +212,37 @@ What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
 | `kubectl wait --for=condition=...` | `wait:` | **v1 core** |
 | `kubectl rollout restart/status` | `rollout:` | **v1 core** |
 | `kubectl create namespace` | `createNamespace: true` / `apply:` | **v1 core** |
-| `helm install oci://...` / local chart | `helm.chart: oci://...` / path | roadmap P3 |
-| `helm uninstall` / `rollback` | `helm.uninstall` (shape TBD) | roadmap P3 |
-| `kubectl apply -k` (kustomize) | `apply.kustomize` (shape TBD) | roadmap P3 |
-| `kubectl apply --prune` / `patch` | `apply.prune` / `patch:` | roadmap P3 |
-| `kubectl label` / `annotate` | `label:` / `annotate:` (shape TBD) | roadmap P3 |
-| `kubectl scale` | `scale:` (shape TBD) | roadmap P3 |
-| `kubectl wait --for=jsonpath=` | `wait.for: jsonpath=...` | roadmap P3 |
-| arbitrary in-cluster commands | `job:` (container to completion) | roadmap P3 |
+| `helm install oci://...` / local chart | `helm.chart: oci://...` / path | roadmap P2 |
+| `helm uninstall` / `rollback` | `helm.uninstall` (shape TBD) | roadmap P2 |
+| `kubectl apply -k` (kustomize) | `apply.kustomize` (shape TBD) | roadmap P2 |
+| `kubectl apply --prune` / `patch` | `apply.prune` / `patch:` | roadmap P2 |
+| `kubectl label` / `annotate` | `label:` / `annotate:` (shape TBD) | roadmap P2 |
+| `kubectl scale` | `scale:` (shape TBD) | roadmap P2 |
+| `kubectl wait --for=jsonpath=` | `wait.for: jsonpath=...` | roadmap P2 |
+| arbitrary in-cluster commands | `job:` (container to completion) | roadmap P2 |
 | `kubectl exec` / `cp` / `port-forward` | — interactive, out of scope | non-goal |
 | `kubectl get/describe` as output | — read paths belong to `plan`/`status` | non-goal |
+
+## Appendix: design decisions vs the v0 prototype
+
+The v1 DSL is a from-scratch redesign of a proven v0 prototype (its
+`examples/` survive in-tree). Decisions made in the redesign, recorded so
+they are not re-litigated:
+
+- **`kind: Khook`** (was `ClusterBootstrap`) with `apiVersion: khook.dvrkn.com/v1`.
+- **Action key implies the type** — no `type:` discriminator. A step has exactly
+  one of `helm:`, `apply:`, `delete:`, `wait:`, `rollout:` (schema: oneOf).
+- **`steps:` / `needs:`** replace v0's `operations:` / `dependsOn:`.
+- **Top-level `defaults:`** replaces `config.defaults`.
+- **v0's `exec` grab-bag is gone** — `wait:` and `rollout:` are first-class.
+- **Helm flattened**: `repo:` is just the URL (no repository name — the SDK
+  doesn't need a repo cache); `atomic:`/`wait:` sit directly on the op (no
+  `flags:` block); `release:` defaults to the step name.
+- **`values:` is a plain map** (the common case); `valuesFrom:` is a Flux-style
+  list for external values. `--set`-style overrides live on the CLI, not in
+  the spec.
+- **`manifests:` is one list** of `- inline:` / `- file:` / `- url:` entries,
+  replacing three parallel fields.
+- **Prefixed environment variables**: only env vars starting with `KHOOK_VAR_`
+  are consumed (`--var-prefix` to override), preventing unrelated environment
+  (PATH, CI secrets) from leaking into specs.

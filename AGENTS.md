@@ -8,16 +8,23 @@ Guidance for AI agents working in this repository.
 Kubernetes and Helm SDKs that initializes a freshly created cluster from a
 declarative YAML spec (`apiVersion: khook.dvrkn.com/v1`, `kind: Khook`).
 
-## Current state: pre-code, planning done
+## Current state: v1 core implemented
 
-This is a **from-scratch v1 rewrite**. There is no Go code in the tree yet.
-Read in this order before doing anything:
+The v1 core (spec parser, DAG engine, the five executors, CLI, unit tests,
+k3d E2E) is implemented. Read in this order before doing anything:
 
-1. **`roadmap.md`** — vision, phased plan, non-goals, open questions. Source of truth.
-2. **`docs/dsl.md`** — normative DSL spec: field-level reference for the v1 step
+1. **`docs/dsl.md`** — normative DSL spec: field-level reference for the v1 step
    types and the kubectl/helm command coverage matrix.
-3. **`examples/*.yaml`** — spec-by-example. Changes must keep these valid against
+2. **`docs/cli.md`** — CLI reference: commands, flags, variables, exit codes.
+3. **`roadmap.md`** — future work only (vision, phased plan, non-goals, open
+   questions).
+4. **`examples/*.yaml`** — spec-by-example. Changes must keep these valid against
    `docs/dsl.md`; `real-case.yaml` is the benchmark a v1 must handle cleanly.
+
+Layout: `cmd/khook` (main), `internal/spec` (types/parse/validate/variables),
+`internal/engine` (DAG levels + runner), `internal/ops` (executors),
+`internal/kube` (clients), `internal/cli` (cobra commands), `hack/e2e.sh`
+(k3d end-to-end; run it after touching engine or executors).
 
 ## Decisions already made (don't re-litigate)
 
@@ -33,3 +40,6 @@ Read in this order before doing anything:
 
 - Commits and PRs must not carry AI attribution (no `Co-Authored-By: Claude`,
   no "Generated with" lines).
+- **`roadmap.md` holds only future work.** When a feature ships, document it in
+  `docs/` (and README where relevant) and remove it from the roadmap in the
+  same change — the roadmap is never a record of what exists.
