@@ -314,8 +314,11 @@ Semantics:
 - The step `timeout` is also set as the Job's `activeDeadlineSeconds`, so a
   Job khook stops waiting on cannot keep running in-cluster.
 
-**(roadmap)** output capture — a `job` publishing small values that later
-steps consume.
+Jobs do not publish values back to the spec (non-goal: khook is not a data
+bus). To hand data to later steps, write a Secret/ConfigMap from the job and
+have consumers reference it *by name* (`secretKeyRef`, `existingSecret`-style
+chart values) — the name is static and plannable, the value flows through the
+API server.
 
 ## Command coverage matrix
 
@@ -338,8 +341,8 @@ What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
 | `helm uninstall` / `rollback` | `helm.uninstall` (shape TBD) | roadmap P2 |
 | `kubectl apply -k` (kustomize) | `apply.kustomize` (shape TBD) | roadmap P2 |
 | `kubectl apply --prune` / `patch` | `apply.prune` / `patch:` | roadmap P2 |
-| `kubectl label` / `annotate` | `label:` / `annotate:` (shape TBD) | roadmap P2 |
-| `kubectl scale` | `scale:` (shape TBD) | roadmap P2 |
+| `kubectl label` / `annotate` | `apply:` a minimal manifest (existing objects are merge-patched, so `metadata.labels`/`annotations` land without touching the rest) | **v1 core** |
+| `kubectl scale` | `apply:` a minimal manifest with `spec.replicas` (same merge-patch mechanics) | **v1 core** |
 | `kubectl wait --for=jsonpath=` | `wait.for: jsonpath=...` | roadmap P2 |
 | `kubectl exec` / `cp` / `port-forward` | — interactive, out of scope | non-goal |
 | `kubectl get/describe` as output | — read paths belong to `plan`/`status` | non-goal |

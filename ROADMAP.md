@@ -31,37 +31,12 @@ the [README](README.md); when an item here ships, it moves there.
 *Goal: cover the real bootstrap cases (`examples/real-case.yaml` and beyond)
 without escape hatches.*
 
-- [ ] **Spec composability**: multiple `-f` files / a directory of specs merged
-      in order; `needs` across files. Deliberately deferred until richer
-      variable sources settle — merge semantics (`defaults:` conflicts,
-      duplicate step names, cross-file validation) depend on them, and the
-      shipped `when:` conditionals already reduce the need to split specs per
-      environment in the first place.
-- [ ] **In-spec variable resolvers** (deferred): cloud secrets (AWS SSM /
-      Secrets Manager) via a `varSources:` pluggable resolver chain. Variables
-      are env-first (`KHOOK_VAR_*` / `KHOOK_SECRET_*`, the wrapper fetches
-      values); build this only if a wrapper-less deployment (Lambda mode)
-      demands it.
 - [ ] **Helm depth**: OCI registry charts (`oci://`), local chart paths/tarballs,
       `- url:` in `valuesFrom`, `reuseValues`, uninstall action, private repo
       auth (basic + ECR).
 - [ ] **Kubectl depth**: prune/patch actions, `waitFor` shorthand on apply (apply
       + wait in one step), kustomize source (`sigs.k8s.io/kustomize` comes in
       transitively with the Helm SDK anyway), `wait.for: jsonpath=...`.
-- [ ] **New step types** (see the coverage matrix in `docs/dsl.md`):
-      - `label:` / `annotate:` (e.g. tagging nodes/namespaces during bootstrap)
-      - `scale:` (e.g. `kubectl scale` shorthand for sizing system workloads)
-- [ ] **`job` output capture**: let a `job` (shipped without it) publish small
-      string values — read from the container termination message as a flat
-      JSON map — that later steps consume in op field values, e.g.
-      `${outputs.<step>.<key>}`. This is *late-bound* data, so it fights the
-      load-time architecture (variables substitute textually before parsing;
-      `when:` and `plan` are decided up front): it needs per-step
-      re-substitution at execution time, must be forbidden in `when:` /
-      `needs:` / anything structural, requires a `needs` path to the producing
-      step (validatable at load), and consumer steps degrade to `unknown` in
-      `plan`. Design carefully before building; the `${outputs.*}` syntax is
-      effectively reserved for it.
 - [ ] **apiVersion `v1` freeze**: publish the JSON schema (raw GitHub URL + JSON
       Schema Store) so editors autocomplete via `# yaml-language-server`.
 
@@ -112,6 +87,8 @@ without escape hatches.*
 - **Not a GitOps engine.** No watch loops, no drift reconciliation — install Argo/Flux and hand off.
 - **Not a package manager.** No chart authoring, no chart repository hosting.
 - **Not a cluster provisioner.** Terraform/eksctl/CAPI create the cluster; we start where they stop.
+- **Not a data bus.** Steps do not pass values through khook (no `${outputs.*}`, no job output capture): late-bound data would make consumer steps unplannable and re-substitution would break the load-time model. In-cluster, a `job` writes a Secret/ConfigMap and consumers reference it *by name* (`secretKeyRef`, `existingSecret`-style chart values) — the name is static and plannable, the value flows through the API server. Out-of-cluster values are variables (env-first); cross-resource wiring after bootstrap belongs to the operators khook hands off to.
+- **Not a secrets fetcher.** khook consumes variables (`KHOOK_VAR_*` / `KHOOK_SECRET_*`, `--set`, `--var-file`); it never reaches into SSM/Secrets Manager/Vault itself — whatever runs khook (shell, CI, Terraform, the Lambda invoker) resolves values, since it always has better credential context. Keeps cloud SDKs out of the binary. In-cluster, the External Secrets pattern owns secrets end-to-end.
 - **No templating language over the document** (no embedded Go templates/Jinja — a `{{ }}` pass would fight the template syntax specs embed as data in Argo/Helm manifests). The sanctioned form is sprig pipelines *inside* `${NAME|...}` references (hermetic function set; see `docs/dsl.md`): only the author-written pipeline is templated, values stay data, the document is never template-parsed. Complexity beyond that belongs in Helm values or a `job` op.
 
 ## Suggested order of attack
@@ -126,7 +103,5 @@ without escape hatches.*
 ## Open questions (decide before Phase 1)
 
 - **Multi-cluster in one spec**: out of scope, or a `targets:` concept later?
-- **Secrets in specs**: recommend External Secrets pattern only, or support
-  first-class secret variable sources (SSM/SM) in Phase 1?
 - **Lambda payload vs S3**: specs can outgrow the 256 KB invoke limit — accept an
   S3 URI as the spec source?
