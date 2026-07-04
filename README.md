@@ -176,6 +176,7 @@ Grafana at `grafana.localhost`).
 | `khook apply -f spec.yaml` | execute the spec against the cluster |
 | `khook plan -f spec.yaml` | show what apply would do — install vs upgrade vs skip, checked against the cluster (`--diff` for rendered object diffs via server-side dry-run, `--offline` for the DAG-only plan) |
 | `khook validate -f spec.yaml` | parse + validate (exit 2 on problems) |
+| `khook graph -f spec.yaml` | emit the step DAG as Mermaid (default) or Graphviz DOT (`--format dot`) for docs and review |
 | `khook schema` | print the spec's JSON Schema (committed at [`schema/v1/khook.json`](schema/v1/khook.json) — point `# yaml-language-server: $schema=...` at it for editor validation and autocomplete) |
 | `khook version` | print version info |
 

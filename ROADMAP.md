@@ -79,7 +79,6 @@ without escape hatches.*
       trace viewer)
 - [ ] Prometheus-format run metrics / CloudWatch EMF in Lambda mode
 - [ ] Webhook/SNS notification on completion or failure
-- [ ] `graph` subcommand: emit DAG as Mermaid/DOT for docs and review
 
 ---
 

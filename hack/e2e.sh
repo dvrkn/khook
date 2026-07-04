@@ -4,7 +4,8 @@
 # What it does:
 #   1. builds the khook binary
 #   2. creates a throwaway k3d cluster (isolated kubeconfig)
-#   3. khook validate + plan --offline on every example spec
+#   3. khook validate + plan --offline + graph (Mermaid and DOT) on every
+#      example spec, with output assertions for graph
 #   4. cluster-aware plan predicts install and plan --diff renders the new
 #      objects, then khook apply examples/simple.yaml, asserts the resources exist
 #   5. cluster-aware plan predicts upgrade and plan --diff reports no changes,
@@ -70,8 +71,8 @@ k3d cluster create "${CLUSTER_NAME}" \
 k3d kubeconfig get "${CLUSTER_NAME}" > "${KUBECONFIG_FILE}"
 k wait --for=condition=Ready nodes --all --timeout=120s >/dev/null
 
-# --- validate / plan --offline on every example (no cluster access) ---------
-log "khook validate + plan --offline on all examples"
+# --- validate / plan --offline / graph on every example (no cluster access) --
+log "khook validate + plan --offline + graph on all examples"
 EXAMPLE_VARS=(
   --set NAMESPACE_NAME_TO_CREATE="${DEMO_NS}"
   --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}"
@@ -83,7 +84,25 @@ for spec in "${REPO_ROOT}"/examples/*.yaml; do
   [[ "${spec}" == *lambda* ]] && continue
   "${KHOOK}" validate -f "${spec}" "${EXAMPLE_VARS[@]}" >/dev/null
   "${KHOOK}" plan --offline -f "${spec}" "${EXAMPLE_VARS[@]}" >/dev/null
+  "${KHOOK}" graph -f "${spec}" "${EXAMPLE_VARS[@]}" >/dev/null
+  "${KHOOK}" graph --format dot -f "${spec}" "${EXAMPLE_VARS[@]}" >/dev/null
 done
+
+log "khook graph emits the DAG as Mermaid and DOT"
+graph_out="$("${KHOOK}" graph -f "${REPO_ROOT}/examples/simple.yaml" \
+  --set NAMESPACE_NAME_TO_CREATE="${DEMO_NS}" --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}")"
+grep -q "flowchart TD" <<<"${graph_out}" || fail "graph should emit a Mermaid flowchart, got: ${graph_out}"
+grep -q 'n0\["create-namespace (apply)"\]' <<<"${graph_out}" || fail "graph should label nodes with name and type, got: ${graph_out}"
+grep -q "n0 --> n1" <<<"${graph_out}" || fail "graph should emit the needs edge, got: ${graph_out}"
+
+graph_out="$("${KHOOK}" graph --format dot -f "${REPO_ROOT}/examples/simple.yaml" \
+  --set NAMESPACE_NAME_TO_CREATE="${DEMO_NS}" --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}")"
+grep -q 'digraph "local-demo"' <<<"${graph_out}" || fail "graph --format dot should emit a digraph, got: ${graph_out}"
+grep -q '"create-namespace" -> "ingress-nginx";' <<<"${graph_out}" || fail "graph --format dot should emit the needs edge, got: ${graph_out}"
+
+# a step excluded by when: is drawn as skipped
+graph_out="$("${KHOOK}" graph -f "${REPO_ROOT}/hack/testdata/e2e-ops.yaml" --set OPS_NAMESPACE="${OPS_NS}")"
+grep -q '"conditional-extra (apply, skipped)"\]:::skipped' <<<"${graph_out}" || fail "graph should mark the when:-excluded step skipped, got: ${graph_out}"
 
 # validation failures must exit 2
 set +e

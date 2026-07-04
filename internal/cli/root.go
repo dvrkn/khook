@@ -1,5 +1,5 @@
 // Package cli wires the khook cobra commands: apply, plan, validate,
-// schema, version.
+// graph, schema, version.
 package cli
 
 import (
@@ -76,6 +76,7 @@ func NewRootCommand() *cobra.Command {
 		newApplyCommand(opts),
 		newPlanCommand(opts),
 		newValidateCommand(opts),
+		newGraphCommand(opts),
 		newSchemaCommand(),
 		newVersionCommand(),
 	)

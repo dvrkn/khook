@@ -1,6 +1,6 @@
 # khook CLI reference
 
-One binary, five subcommands. Cluster access follows standard kubeconfig
+One binary, six subcommands. Cluster access follows standard kubeconfig
 loading rules (`KUBECONFIG`, `~/.kube/config`).
 
 ## Global flags
@@ -12,7 +12,7 @@ loading rules (`KUBECONFIG`, `~/.kube/config`).
 | `--log-level` | `info` | `debug`, `info`, `warn`, `error` (`debug` includes Helm SDK output) |
 | `--log-format` | `text` | `text` or `json`; logs go to stderr |
 
-## Spec flags (`apply`, `plan`, `validate`)
+## Spec flags (`apply`, `plan`, `validate`, `graph`)
 
 | Flag | Notes |
 |---|---|
@@ -112,6 +112,30 @@ exits 1.
 
 Parse + validation only (variables, schema, action keys, DAG cycles). No
 cluster access. Prints all problems at once, not just the first.
+
+### `khook graph -f spec.yaml`
+
+Emits the step DAG as a diagram for docs and review. No cluster access.
+Default output is a [Mermaid](https://mermaid.js.org/) flowchart (renders
+directly in GitHub Markdown inside a ` ```mermaid ` fence); `--format dot`
+emits Graphviz DOT instead (`khook graph -f spec.yaml --format dot | dot
+-Tsvg > dag.svg`).
+
+Each node shows the step name and type; edges are the `needs` relations.
+Variables are resolved (same spec flags as `apply`), so a step whose `when:`
+condition is false is drawn dashed/gray and labeled `skipped`. The DAG is
+validated first — a dependency cycle exits 2, same as `validate`.
+
+```
+$ khook graph -f examples/multi-app.yaml
+flowchart TD
+    n0["create-monitoring-namespace (apply)"]
+    n1["prometheus (helm)"]
+    n2["create-app-namespace (apply)"]
+    n3["deploy-sample-app (apply)"]
+    n0 --> n1
+    n2 --> n3
+```
 
 ### `khook schema`
 
