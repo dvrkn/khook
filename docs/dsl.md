@@ -102,6 +102,105 @@ Fallbacks for the per-step fields of the same name.
 | `retryDelay` | duration | `10s` | pause between tries |
 | `onError` | `fail` \| `continue` | `fail` | `fail` stops scheduling new steps; `continue` marks the step failed and keeps going |
 
+## `state:` — the run-state record
+
+Optional and off by default. When present, khook journals the run in an
+in-cluster Secret — the spec's hash plus every step's outcome — and a re-run
+of the *same* spec resumes: steps the record proves complete are skipped
+(reported `skipped` with reason `succeeded in a previous run (state
+record)`) and still satisfy `needs`. The record is a journal, not an
+ownership ledger: delete the Secret and nothing breaks — the next run just
+re-converges everything.
+
+```yaml
+state:
+  enabled: true          # optional; writing `state: {}` already opts in.
+                         # `enabled: ${USE_STATE:-false}` toggles per env.
+  namespace: kube-system # optional; default "default"
+  name: my-bootstrap     # optional; default "khook-state-<metadata.name>"
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `true` *when the block is present* | absent `state:` block = disabled |
+| `namespace` | string | `default` | where the record Secret lives (RFC 1123 label) |
+| `name` | string | `khook-state-<metadata.name>` | record Secret name (RFC 1123 subdomain) |
+
+Semantics, precisely:
+
+- The record keys on a **whole-spec hash** taken after variable substitution
+  and parsing. Cosmetic YAML edits (comments, key order, quoting) do not
+  change it; any effective change — a value, a version, a rotated secret
+  that is substituted into the document — does, and a changed hash means the
+  record is ignored and the run starts fresh.
+- Only steps recorded `ok` resume. Failed and skipped steps re-run. `when:`
+  is re-evaluated every run and wins over the record. Per-op checks
+  (`skipIfInstalled`, `skipIfExists`, `skipIfSucceeded`) are unchanged and
+  still guard the steps that actually execute.
+- The journal is written incrementally after every step, so an interrupted
+  run (crash, Ctrl-C) resumes from the last completed step.
+- khook refuses to touch a Secret of the record's name that it does not own
+  (no `app.kubernetes.io/managed-by: khook` label).
+- What is stored: the spec **hash**, khook's version, timestamps, and
+  per-step outcomes with redacted, truncated error text. The rendered spec —
+  which can contain secret values — is never written to the cluster.
+
+### When to enable it
+
+**Enable it** when a re-run costs real time or real disruption:
+
+- **Long bootstraps.** A realistic sequence — CNI, ingress, cert-manager,
+  secrets tooling, GitOps controller, each with waits — easily runs 10+
+  minutes. A failure at step 9 of 12 without state means redoing the nine;
+  with state it means those nine skip in about a second each.
+- **Specs applied automatically on every `terraform apply` / CI run.** The
+  record turns "khook runs again" into a cheap no-op: unchanged spec, all
+  steps resume-skip, exit 0. Without it every run re-executes each step's
+  idempotent path (helm history lookups, server-side applies, waits).
+- **Steps that are disruptive or costly to repeat even when idempotent** — a
+  `job:` that re-runs a data migration, a helm upgrade that restarts
+  workloads, charts pulled from rate-limited registries.
+
+**Optional** for mid-size specs where the per-op `skipIf*` checks already
+make re-runs cheap. State still adds two things: resume decisions without
+any cluster probing, including for step types with no natural existence
+check (`patch:`, `wait:`, `rollout:`), and `khook status` visibility into
+what the last run did.
+
+**Skip it** when:
+
+- the spec is small and fast — re-running everything costs seconds;
+- the cluster is throwaway (k3d/kind recreated more often than re-applied);
+- khook's credentials cannot get Secret write access in the state namespace;
+- the spec's inputs change on every run (the hash would never match, so the
+  record would never resume — pure overhead).
+
+It is **never required**: khook without state is already idempotent per
+step. State is an optimization for resume speed and run observability, not
+a correctness requirement.
+
+### Tradeoffs of enabling it
+
+- **RBAC**: the runner needs `get`/`create`/`update` on Secrets in the state
+  namespace — a write grant you may not otherwise need.
+- **Resume trusts the journal, not the cluster.** A step recorded `ok` is
+  skipped even if its resources were deleted out-of-band since the last run.
+  khook does no drift detection — by design, that's the GitOps controller's
+  job. Mitigation: delete the record Secret (the next run re-converges
+  everything) or change the spec (hash mismatch forces a fresh run).
+- **Any effective spec change means a full re-run** — including rotated
+  secret values that are substituted into the document. Per-step change
+  detection is on the roadmap, not in the record today.
+- **Single runner assumed.** No locking, no leader election; two concurrent
+  applies against the same record are last-write-wins.
+- **A run that succeeds but cannot write its record exits 1.** Opting into
+  state makes the journal part of the contract; silent state loss would be
+  worse than a loud exit code.
+- **A crash can leave `runStatus: running` behind.** It is a marker for
+  `status` output, not a lock; the next apply overwrites it.
+- **Size** is a non-issue: the record is one small JSON blob (error text is
+  truncated), far below the ~1 MiB object cap.
+
 ## Steps — common fields
 
 ```yaml

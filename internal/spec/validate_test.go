@@ -59,6 +59,13 @@ func TestValidate(t *testing.T) {
 		{"missing name", func(d *Document) { d.Metadata.Name = "" }, "metadata.name"},
 		{"no steps", func(d *Document) { d.Steps = nil }, "at least one step"},
 		{"bad defaults onError", func(d *Document) { d.Defaults.OnError = "retry" }, "onError"},
+		{"bad state namespace", func(d *Document) { d.State = &StateSpec{Namespace: "Bad_NS"} }, "state: namespace"},
+		{"bad state name", func(d *Document) { d.State = &StateSpec{Name: "Bad_Name"} }, "state: name"},
+		{
+			"metadata.name derives bad state name",
+			func(d *Document) { d.Metadata.Name = "My Cluster"; d.State = &StateSpec{} },
+			"set state.name explicitly",
+		},
 		{"step missing name", func(d *Document) { d.Steps[0].Name = "" }, "name is required"},
 		{"bad step name", func(d *Document) { d.Steps[0].Name = "Bad_Name" }, "must match"},
 		{"negative retries", func(d *Document) { d.Steps[0].Retries = ptrTo(-1) }, "retries"},
@@ -359,3 +366,35 @@ func TestValidateAggregatesProblems(t *testing.T) {
 }
 
 func ptrTo[T any](v T) *T { return &v }
+
+func TestStateSpecResolvers(t *testing.T) {
+	doc := validDoc()
+	if doc.StateEnabled() {
+		t.Fatal("absent state: block must mean disabled")
+	}
+
+	doc.State = &StateSpec{}
+	if err := Validate(doc); err != nil {
+		t.Fatal(err)
+	}
+	if !doc.StateEnabled() {
+		t.Fatal("present state: block must default to enabled")
+	}
+	if got := doc.State.TargetNamespace(); got != "default" {
+		t.Fatalf("default namespace = %q, want %q", got, "default")
+	}
+	if got := doc.State.SecretName(doc.Metadata.Name); got != "khook-state-test" {
+		t.Fatalf("derived name = %q, want %q", got, "khook-state-test")
+	}
+
+	doc.State = &StateSpec{Enabled: ptrTo(false), Namespace: "kube-system", Name: "my-state"}
+	if doc.StateEnabled() {
+		t.Fatal("enabled: false must disable")
+	}
+	if got := doc.State.TargetNamespace(); got != "kube-system" {
+		t.Fatalf("namespace = %q, want %q", got, "kube-system")
+	}
+	if got := doc.State.SecretName(doc.Metadata.Name); got != "my-state" {
+		t.Fatalf("name = %q, want %q", got, "my-state")
+	}
+}

@@ -49,13 +49,11 @@ without escape hatches.*
 
 - [ ] **Unified skip semantics**: `skipIfInstalled` / `skipIfExists` are per-type
       today → one consistent `skipIf` policy across all step types.
-- [ ] **Run state record**: write a ConfigMap/Secret in-cluster (like Helm does)
-      recording spec hash + per-step outcome; `apply` detects a prior partial
-      run and continues from the failure point.
-- [ ] **Change detection**: hash step inputs (chart version + values +
-      manifests); unchanged + previously-successful → skip. This is what makes
-      "run it on every terraform apply" cheap.
-- [ ] **`status` subcommand**: read the state record, show last run, per-step outcomes.
+- [ ] **Change detection**: extend the shipped run-state record (`state:`, see
+      `docs/dsl.md`) with per-step input hashes (chart version + values +
+      manifests); a step that is unchanged *and* previously successful skips
+      even when the rest of the spec changed. Today the record resumes only
+      while the whole-spec hash matches.
 - [ ] **`destroy` (stretch)**: reverse-topological teardown for dev clusters.
 
 ## Phase 3 — Delivery & integrations (meet users where clusters are created)

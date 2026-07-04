@@ -16,6 +16,11 @@
 #   8. kubectl depth: apply.waitFor, jsonpath wait, patch (strategic + json),
 #      kustomize source — then asserts the re-run is idempotent and
 #      plan --diff reports no changes
+#   9. run-state record (state:): a failed run journals to the record Secret,
+#      an identical re-run resumes past the completed step (proven by an
+#      out-of-band deletion staying deleted), a changed variable forces a
+#      fresh run, khook status reads the record, and a foreign same-name
+#      Secret is refused
 #
 # Usage:
 #   ./hack/e2e.sh                 # full run, cluster deleted at the end
@@ -252,6 +257,80 @@ diff_out="$(kd_spec plan --diff)"
 grep -q "diff: no changes" <<<"${diff_out}" || fail "plan --diff on the applied kubectl-depth spec should report no changes, got: ${diff_out}"
 grep -q "diff: unavailable" <<<"${diff_out}" && fail "plan --diff should assess every kubectl-depth step, got: ${diff_out}"
 grep -q "already holds" <<<"${diff_out}" || fail "plan should report the jsonpath wait as already met, got: ${diff_out}"
+
+# --- run-state record: fail, resume, hash mismatch, ownership guard ----------
+STATE_NS="e2e-state"
+STATE_SECRET="khook-state-e2e-state"
+
+state_spec() {
+  local cmd="$1"
+  shift
+  "${KHOOK}" "${cmd}" --kubeconfig "${KUBECONFIG_FILE}" \
+    -f "${REPO_ROOT}/hack/testdata/e2e-state.yaml" \
+    --set STATE_NS="${STATE_NS}" \
+    "$@"
+}
+
+state_record() {
+  k -n "${STATE_NS}" get secret "${STATE_SECRET}" -o jsonpath='{.data.record\.json}' | base64 -d
+}
+
+log "state: status before any apply reports no record (exit 0)"
+k create namespace "${STATE_NS}" >/dev/null
+status_out="$(state_spec status -o json)"
+grep -q '"found": false' <<<"${status_out}" || fail "status before any run should report found:false, got: ${status_out}"
+
+log "state: first run fails at step-b and journals the outcome"
+set +e
+state_spec apply >/dev/null 2>&1
+rc=$?
+set -e
+[[ ${rc} -eq 1 ]] || fail "state run with the gate absent should exit 1, got ${rc}"
+
+managed="$(k -n "${STATE_NS}" get secret "${STATE_SECRET}" -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}')"
+[[ "${managed}" == "khook" ]] || fail "state secret should carry the managed-by label, got '${managed}'"
+record="$(state_record)"
+grep -q '"runStatus":"failed"' <<<"${record}" || fail "record should mark the run failed, got: ${record}"
+grep -q '"name":"step-a","type":"apply","status":"ok"' <<<"${record}" || fail "record should mark step-a ok, got: ${record}"
+grep -q '"name":"step-b","type":"wait","status":"failed"' <<<"${record}" || fail "record should mark step-b failed, got: ${record}"
+grep -q '"name":"step-c","type":"apply","status":"skipped"' <<<"${record}" || fail "record should mark step-c skipped, got: ${record}"
+
+status_out="$(state_spec status)"
+grep -q "run:     failed" <<<"${status_out}" || fail "status should report the failed run, got: ${status_out}"
+grep -q "unchanged since this run" <<<"${status_out}" || fail "status should report the spec unchanged, got: ${status_out}"
+
+log "state: identical re-run resumes past step-a (journal wins over the cluster)"
+# Delete step-a's output out-of-band: the resume must skip step-a anyway —
+# this is the documented staleness tradeoff, asserted here on purpose.
+k -n "${STATE_NS}" delete configmap state-marker >/dev/null
+# Open the gate so step-b succeeds this time.
+k -n "${STATE_NS}" create configmap state-gate --from-literal=ready=yes >/dev/null
+k -n "${STATE_NS}" label configmap state-gate khook-e2e=state-gate >/dev/null
+
+apply_out="$(state_spec apply)"
+grep -q "succeeded in a previous run" <<<"${apply_out}" || fail "re-run should resume-skip step-a, got: ${apply_out}"
+k -n "${STATE_NS}" get configmap state-marker >/dev/null 2>&1 && fail "state-marker exists — step-a ran despite the record (resume did not happen)"
+k -n "${STATE_NS}" get configmap state-final >/dev/null || fail "step-c did not run on the resumed attempt"
+record="$(state_record)"
+grep -q '"runStatus":"ok"' <<<"${record}" || fail "record should mark the resumed run ok, got: ${record}"
+grep -q '"name":"step-a","type":"apply","status":"ok"' <<<"${record}" || fail "record must keep step-a ok after the resume, got: ${record}"
+
+log "state: a changed variable (hash mismatch) forces a fresh run"
+apply_out="$(state_spec apply --set MARKER=changed)"
+grep -q "succeeded in a previous run" <<<"${apply_out}" && fail "hash mismatch must not resume, got: ${apply_out}"
+made_by="$(k -n "${STATE_NS}" get configmap state-marker -o jsonpath='{.data.made-by}')"
+[[ "${made_by}" == "changed" ]] || fail "fresh run should recreate state-marker with the new value, got '${made_by}'"
+
+log "state: a foreign same-name secret is refused"
+FOREIGN_NS="e2e-state-foreign"
+k create namespace "${FOREIGN_NS}" >/dev/null
+k -n "${FOREIGN_NS}" create secret generic "${STATE_SECRET}" --from-literal=x=y >/dev/null
+set +e
+foreign_out="$(state_spec apply --set STATE_NS="${FOREIGN_NS}" 2>&1)"
+rc=$?
+set -e
+[[ ${rc} -eq 1 ]] || fail "apply against a foreign state secret should exit 1, got ${rc}"
+grep -q "not managed by khook" <<<"${foreign_out}" || fail "error should name the ownership problem, got: ${foreign_out}"
 
 # --- failure semantics: a failing step must exit 1 and skip dependents -------
 log "asserting failure exit code"

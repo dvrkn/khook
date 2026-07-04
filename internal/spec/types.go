@@ -48,15 +48,60 @@ const (
 
 // Document is the root of a Khook spec.
 type Document struct {
-	APIVersion string   `json:"apiVersion"`
-	Kind       string   `json:"kind"`
-	Metadata   Metadata `json:"metadata"`
-	Defaults   Defaults `json:"defaults,omitempty"`
-	Steps      []Step   `json:"steps"`
+	APIVersion string     `json:"apiVersion"`
+	Kind       string     `json:"kind"`
+	Metadata   Metadata   `json:"metadata"`
+	Defaults   Defaults   `json:"defaults,omitempty"`
+	State      *StateSpec `json:"state,omitempty"`
+	Steps      []Step     `json:"steps"`
 }
 
 type Metadata struct {
 	Name string `json:"name"`
+}
+
+// StateSpec configures the optional run-state record: a journal Secret
+// written in-cluster (spec hash + per-step outcomes) that lets a re-run
+// resume past steps that already succeeded. Absent block = feature off.
+type StateSpec struct {
+	// Enabled defaults to true when the block is present, so writing
+	// `state: {}` opts in and `enabled: ${USE_STATE:-false}` can toggle
+	// per environment without deleting the block.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Namespace the record Secret lives in; defaults to "default".
+	Namespace string `json:"namespace,omitempty"`
+	// Name of the record Secret; defaults to "khook-state-<metadata.name>".
+	Name string `json:"name,omitempty"`
+}
+
+// DefaultStateNamePrefix derives the record Secret name from metadata.name
+// when state.name is omitted.
+const DefaultStateNamePrefix = "khook-state-"
+
+func (s *StateSpec) EffectiveEnabled() bool {
+	return s.Enabled == nil || *s.Enabled
+}
+
+// TargetNamespace resolves the record's namespace, defaulting to "default".
+func (s *StateSpec) TargetNamespace() string {
+	if s.Namespace != "" {
+		return s.Namespace
+	}
+	return "default"
+}
+
+// SecretName resolves the record's Secret name, deriving it from
+// metadata.name when unset.
+func (s *StateSpec) SecretName(metadataName string) string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return DefaultStateNamePrefix + metadataName
+}
+
+// StateEnabled reports whether the run-state record is in effect.
+func (d *Document) StateEnabled() bool {
+	return d.State != nil && d.State.EffectiveEnabled()
 }
 
 // Defaults are fallbacks for the per-step fields of the same name.

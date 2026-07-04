@@ -19,7 +19,7 @@ loading rules (`KUBECONFIG`, `~/.kube/config`).
 | `--log-level` | `info` | `debug`, `info`, `warn`, `error` (`debug` includes Helm SDK output) |
 | `--log-format` | `text` | `text` or `json`; logs go to stderr |
 
-## Spec flags (`apply`, `plan`, `validate`, `graph`)
+## Spec flags (`apply`, `plan`, `validate`, `graph`, `status`)
 
 | Flag | Notes |
 |---|---|
@@ -66,6 +66,16 @@ against the cluster. Output depends on where it runs:
   and per-step `name`, `type`, `status`, `attempts`, `durationMs`, `error`,
   `skipReason`. Logs still stream to stderr, so `khook apply -o json 2>/dev/null`
   is clean JSON for CI. Exit codes are unchanged.
+
+When the spec enables [`state:`](dsl.md#state--the-run-state-record), apply
+also maintains the run-state record: it loads the record Secret before the
+first step (proving it is writable — an unwritable record fails the run
+up front), skips steps a previous run of the *same* spec completed
+(summary/JSON show them `skipped` with reason
+`succeeded in a previous run (state record)`), journals every step outcome
+as it happens, and stamps the final run status. A run whose steps all
+succeed but whose record cannot be written **exits 1** — opting into state
+makes the journal part of the contract.
 
 ### `khook plan -f spec.yaml`
 
@@ -119,6 +129,36 @@ exits 1.
 
 Parse + validation only (variables, schema, action keys, DAG cycles). No
 cluster access. Prints all problems at once, not just the first.
+
+### `khook status -f spec.yaml`
+
+Reads the spec's run-state record ([`state:`](dsl.md#state--the-run-state-record))
+and shows the last run — read-only, no mutations. The record's location is
+derived from the spec exactly as `apply` derives it (same variables, same
+defaulting), so point `status` at the same spec with the same `--set`/env.
+See the DSL page for when enabling state is worth it.
+
+```text
+spec:    prod-bootstrap
+record:  secret kube-system/khook-state-prod-bootstrap (khook v0.3.0)
+run:     failed, started 2026-07-04T10:00:00+03:00, updated 2026-07-04T10:04:12+03:00
+spec is unchanged since this run — the next apply resumes past completed steps
+
+STEP     TYPE   STATUS   ATTEMPTS  DURATION  DETAIL
+cni      helm   ok       1         1m12s
+ingress  helm   failed   3         2m40s     context deadline exceeded
+smoke    job    skipped                      needs "ingress" which did not succeed
+```
+
+- A spec that does not enable `state:` is a validation error (exit 2) —
+  there is no record to read.
+- **No record found exits 0** with a message: "not applied yet" is a valid
+  answer, not a failure. Scripts should use `-o, --output json`, which
+  prints `{"found": false}` in that case and
+  `{"found": true, "specChanged": ..., "record": {...}}` otherwise.
+- A step shown with status `-` was seeded but never finished — the run
+  crashed or was interrupted while it was in flight; `runStatus` may also
+  still read `running` (it is a marker, not a lock).
 
 ### `khook graph -f spec.yaml`
 

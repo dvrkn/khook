@@ -76,6 +76,7 @@ func NewRootCommand() *cobra.Command {
 		newApplyCommand(opts),
 		newPlanCommand(opts),
 		newValidateCommand(opts),
+		newStatusCommand(opts),
 		newGraphCommand(opts),
 		newSchemaCommand(),
 		newVersionCommand(),

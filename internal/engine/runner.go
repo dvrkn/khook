@@ -58,6 +58,10 @@ type Event struct {
 	Result      *Result // done
 }
 
+// SkipReasonPriorRun marks steps skipped because the state record says a
+// previous run of the same spec already completed them.
+const SkipReasonPriorRun = "succeeded in a previous run (state record)"
+
 // Runner executes a validated document.
 type Runner struct {
 	Defaults spec.Defaults
@@ -65,6 +69,9 @@ type Runner struct {
 	Log      *slog.Logger
 	// OnEvent receives step lifecycle events; defaults to LogEvents(Log).
 	OnEvent func(Event)
+	// SkipCompleted names steps a previous run of the same spec recorded as
+	// ok (state record); they are reported skipped and satisfy needs.
+	SkipCompleted map[string]bool
 
 	// sleep is swapped in tests to avoid real retry delays.
 	sleep func(ctx context.Context, d time.Duration) error
@@ -106,7 +113,9 @@ func (r *Runner) notify(ev Event) {
 // Run executes steps in DAG levels. Within a level steps run in parallel. A
 // step runs only if every step it needs succeeded. A step excluded by its
 // when: condition is reported skipped but still satisfies needs — the
-// exclusion is deliberate, and needs expresses ordering. When a step fails
+// exclusion is deliberate, and needs expresses ordering. Steps named in
+// SkipCompleted are likewise skipped-but-satisfying (a previous run already
+// completed them); when: wins over SkipCompleted. When a step fails
 // with onError=fail, steps already running finish, nothing new starts, and
 // every not-yet-run step is reported skipped. The returned error is non-nil
 // if any step failed; results always cover every step.
@@ -126,6 +135,13 @@ func (r *Runner) Run(ctx context.Context, steps []spec.Step) ([]Result, error) {
 			if step.Excluded {
 				succeeded[step.Name] = true
 				res := Result{Step: step, Status: StatusSkipped, SkipReason: fmt.Sprintf("when condition is false (%s)", step.When)}
+				results = append(results, res)
+				r.notify(Event{Kind: EventDone, Step: step, Result: &res})
+				continue
+			}
+			if r.SkipCompleted[step.Name] {
+				succeeded[step.Name] = true
+				res := Result{Step: step, Status: StatusSkipped, SkipReason: SkipReasonPriorRun}
 				results = append(results, res)
 				r.notify(Event{Kind: EventDone, Step: step, Result: &res})
 				continue

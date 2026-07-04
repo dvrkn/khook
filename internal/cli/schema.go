@@ -91,6 +91,10 @@ func generateSchema() (*jsonschema.Schema, error) {
 
 	prop("Defaults", def("Defaults"), "onError").Enum = onError
 
+	stateSpec := def("StateSpec")
+	prop("StateSpec", stateSpec, "namespace").Pattern = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	prop("StateSpec", stateSpec, "name").Pattern = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+
 	step := def("Step")
 	step.OneOf = exactlyOne("helm", "apply", "delete", "patch", "wait", "rollout", "job")
 	prop("Step", step, "onError").Enum = onError

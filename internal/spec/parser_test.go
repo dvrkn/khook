@@ -56,6 +56,33 @@ steps:
 	}
 }
 
+func TestParseState(t *testing.T) {
+	src := strings.Replace(minimalSpec, "steps:", `state:
+  enabled: ${USE_STATE:-true}
+  namespace: kube-system
+steps:`, 1)
+	doc, err := Parse([]byte(src), map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !doc.StateEnabled() || doc.State.Namespace != "kube-system" {
+		t.Fatalf("unexpected state: %+v", doc.State)
+	}
+
+	doc, err = Parse([]byte(src), map[string]string{"USE_STATE": "false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.StateEnabled() {
+		t.Fatal("USE_STATE=false must disable state")
+	}
+
+	bogus := strings.Replace(minimalSpec, "steps:", "state:\n  store: configmap\nsteps:", 1)
+	if _, err := Parse([]byte(bogus), nil); err == nil || !strings.Contains(err.Error(), "store") {
+		t.Fatalf("want unknown-field error mentioning store, got %v", err)
+	}
+}
+
 func TestParseUnknownFieldRejected(t *testing.T) {
 	src := strings.Replace(minimalSpec, "metadata:", "bogus: field\nmetadata:", 1)
 	if _, err := Parse([]byte(src), nil); err == nil || !strings.Contains(err.Error(), "bogus") {

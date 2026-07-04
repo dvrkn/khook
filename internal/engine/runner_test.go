@@ -290,3 +290,79 @@ func TestRunLevelParallelism(t *testing.T) {
 		t.Fatalf("max concurrent = %d, want level to run in parallel", maxRunning)
 	}
 }
+
+func TestRunSkipCompleted(t *testing.T) {
+	rec := &recorder{}
+	r := newTestRunner(spec.Defaults{}, rec.exec)
+	r.SkipCompleted = map[string]bool{"done": true}
+
+	var events []Event
+	r.OnEvent = func(ev Event) { events = append(events, ev) }
+
+	results, err := r.Run(context.Background(), steps(
+		step("done"),
+		step("next", "done"),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	byName := resultsByName(results)
+	if byName["done"].Status != StatusSkipped || byName["done"].SkipReason != SkipReasonPriorRun {
+		t.Fatalf("done = %+v, want skipped with prior-run reason", byName["done"])
+	}
+	if byName["next"].Status != StatusOK {
+		t.Fatalf("next = %+v, want ok — resume-skip must satisfy needs", byName["next"])
+	}
+	for _, name := range rec.executed {
+		if name == "done" {
+			t.Fatal("resume-skipped step must not execute")
+		}
+	}
+	doneEvents := 0
+	for _, ev := range events {
+		if ev.Kind == EventDone && ev.Step.Name == "done" {
+			doneEvents++
+		}
+	}
+	if doneEvents != 1 {
+		t.Fatalf("done EventDone count = %d, want 1", doneEvents)
+	}
+}
+
+func TestRunSkipCompletedExcludedWins(t *testing.T) {
+	rec := &recorder{}
+	r := newTestRunner(spec.Defaults{}, rec.exec)
+	r.SkipCompleted = map[string]bool{"both": true}
+
+	s := step("both")
+	s.When = `vars.X == "on"`
+	s.Excluded = true
+
+	results, err := r.Run(context.Background(), steps(s))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := resultsByName(results)["both"]
+	if res.Status != StatusSkipped || !strings.Contains(res.SkipReason, "when condition") {
+		t.Fatalf("res = %+v, want when-exclusion reason to win", res)
+	}
+}
+
+func TestRunSkipCompletedFailedStepsRerun(t *testing.T) {
+	rec := &recorder{}
+	r := newTestRunner(spec.Defaults{}, rec.exec)
+	// Only "a" is recorded ok; "b" failed last run and must re-run.
+	r.SkipCompleted = map[string]bool{"a": true}
+
+	results, err := r.Run(context.Background(), steps(step("a"), step("b", "a")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resultsByName(results)["b"].Status != StatusOK {
+		t.Fatal("b must re-run")
+	}
+	if len(rec.executed) != 1 || rec.executed[0] != "b" {
+		t.Fatalf("executed = %v, want only b", rec.executed)
+	}
+}

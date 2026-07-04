@@ -9,6 +9,12 @@ import (
 
 var stepNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
+// RFC 1123: a label (namespace names) and a subdomain (Secret names).
+var (
+	rfc1123LabelPattern     = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	rfc1123SubdomainPattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+)
+
 // workloadKinds are the kinds rollout: accepts, normalized to lowercase
 // singular.
 var workloadKinds = map[string]bool{
@@ -49,6 +55,9 @@ func Validate(doc *Document) error {
 	}
 	if err := validateOnError(doc.Defaults.OnError); err != nil {
 		addf("defaults: %v", err)
+	}
+	for _, p := range validateState(doc) {
+		addf("state: %s", p)
 	}
 	if len(doc.Steps) == 0 {
 		addf("steps must contain at least one step")
@@ -111,6 +120,29 @@ func Validate(doc *Document) error {
 		return &ValidationError{Problems: problems}
 	}
 	return nil
+}
+
+// validateState checks the state: block. The effective values are checked so
+// a derived Secret name (khook-state-<metadata.name>) is caught here rather
+// than at apply time.
+func validateState(doc *Document) []string {
+	s := doc.State
+	if s == nil {
+		return nil
+	}
+	var problems []string
+	if ns := s.TargetNamespace(); !rfc1123LabelPattern.MatchString(ns) || len(ns) > 63 {
+		problems = append(problems, fmt.Sprintf("namespace must be a valid namespace name (RFC 1123 label), got %q", ns))
+	}
+	name := s.SecretName(doc.Metadata.Name)
+	if !rfc1123SubdomainPattern.MatchString(name) || len(name) > 253 {
+		if s.Name == "" {
+			problems = append(problems, fmt.Sprintf("metadata.name derives an invalid Secret name %q — set state.name explicitly", name))
+		} else {
+			problems = append(problems, fmt.Sprintf("name must be a valid Secret name (RFC 1123 subdomain), got %q", name))
+		}
+	}
+	return problems
 }
 
 func validateOnError(v string) error {

@@ -125,6 +125,9 @@
         "defaults": {
           "$ref": "#/$defs/Defaults"
         },
+        "state": {
+          "$ref": "#/$defs/StateSpec"
+        },
         "steps": {
           "items": {
             "$ref": "#/$defs/Step"
@@ -352,6 +355,23 @@
       "required": [
         "namespace"
       ]
+    },
+    "StateSpec": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "Step": {
       "oneOf": [

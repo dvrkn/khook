@@ -14,6 +14,7 @@ import (
 	"github.com/dvrkn/khook/internal/engine"
 	"github.com/dvrkn/khook/internal/kube"
 	"github.com/dvrkn/khook/internal/ops"
+	"github.com/dvrkn/khook/internal/state"
 )
 
 func newApplyCommand(root *rootOptions) *cobra.Command {
@@ -41,6 +42,38 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 				return executionErr(err)
 			}
 
+			// Run-state record (state: in the spec): load the prior journal,
+			// decide what resumes, and prove the record is writable before
+			// any step runs.
+			var recorder *stateRecorder
+			var skipCompleted map[string]bool
+			if doc.StateEnabled() {
+				store := state.NewStore(clients.Typed, doc.State.TargetNamespace(), doc.State.SecretName(doc.Metadata.Name))
+				prior, err := store.Load(cmd.Context())
+				if err != nil {
+					return executionErr(err)
+				}
+				hash, err := state.SpecHash(doc)
+				if err != nil {
+					return executionErr(err)
+				}
+				switch {
+				case prior == nil:
+				case !usablePrior(prior, hash):
+					root.log.Info("state record ignored: spec changed since last run", "secret", store.Ref())
+				default:
+					skipCompleted = resumableSteps(prior, hash, doc)
+					if len(skipCompleted) > 0 {
+						root.log.Info("resuming from state record", "secret", store.Ref(), "completed", len(skipCompleted))
+					}
+				}
+				rec := seedRecord(doc, prior, hash)
+				if err := store.Save(cmd.Context(), rec); err != nil {
+					return executionErr(fmt.Errorf("state: is enabled but the record cannot be written: %w", err))
+				}
+				recorder = &stateRecorder{store: store, rec: rec, redact: root.redact, log: root.log, ctx: cmd.Context()}
+			}
+
 			// Live progress lines replace the per-step log stream. Quiet the
 			// logger so executor chatter on stderr does not garble the
 			// display — unless the user explicitly picked a level.
@@ -54,6 +87,7 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 
 			executor := ops.NewExecutor(clients, root.log)
 			runner := engine.NewRunner(doc.Defaults, executor.Execute, root.log)
+			runner.SkipCompleted = skipCompleted
 
 			stdout := root.redact.Wrap(os.Stdout)
 			var prog *progress
@@ -64,8 +98,17 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 			} else {
 				root.log.Info("applying spec", "name", doc.Metadata.Name, "steps", len(doc.Steps))
 			}
+			if recorder != nil {
+				recorder.next = runner.OnEvent
+				runner.OnEvent = recorder.Handle
+			}
 
 			results, runErr := runner.Run(cmd.Context(), doc.Steps)
+
+			var stateErr error
+			if recorder != nil {
+				stateErr = recorder.finalize(runErr)
+			}
 
 			switch {
 			case interactive:
@@ -79,6 +122,9 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 			}
 			if runErr != nil {
 				return executionErr(runErr)
+			}
+			if stateErr != nil {
+				return executionErr(fmt.Errorf("run succeeded but the state record could not be written: %w", stateErr))
 			}
 			return nil
 		},
