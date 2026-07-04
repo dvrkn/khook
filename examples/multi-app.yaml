@@ -1,4 +1,4 @@
-apiVersion: khook.dvrkn.com/v1
+apiVersion: khook.io/v1
 kind: Khook
 metadata:
   name: multi-app-demo

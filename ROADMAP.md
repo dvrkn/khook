@@ -21,7 +21,7 @@ the [README](README.md); when an item here ships, it moves there.
    replacement for it.
 4. **Fail loud, resume cheap.** Clear errors with operation context; re-running
    skips what's already done.
-5. **Spec is the API.** Schema-validated, versioned (`khook.dvrkn.com/v1`),
+5. **Spec is the API.** Schema-validated, versioned (`khook.io/v1`),
    editor-autocomplete friendly.
 
 ---

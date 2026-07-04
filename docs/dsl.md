@@ -1,6 +1,6 @@
 # khook DSL v1 — specification
 
-Normative spec for `apiVersion: khook.dvrkn.com/v1`, `kind: Khook`.
+Normative spec for `apiVersion: khook.io/v1`, `kind: Khook`.
 `examples/*.yaml` must always validate against this document; where they
 disagree, this document wins. Anything marked **(roadmap)** is not part of v1
 core — see the command coverage matrix at the bottom and `roadmap.md`.
@@ -8,7 +8,7 @@ core — see the command coverage matrix at the bottom and `roadmap.md`.
 ## Document envelope
 
 ```yaml
-apiVersion: khook.dvrkn.com/v1   # required, fixed
+apiVersion: khook.io/v1   # required, fixed
 kind: Khook                      # required, fixed
 metadata:
   name: my-bootstrap             # required; used in logs/state record
@@ -350,7 +350,7 @@ The v1 DSL is a from-scratch redesign of a proven v0 prototype (its
 `examples/` survive in-tree). Decisions made in the redesign, recorded so
 they are not re-litigated:
 
-- **`kind: Khook`** (was `ClusterBootstrap`) with `apiVersion: khook.dvrkn.com/v1`.
+- **`kind: Khook`** (was `ClusterBootstrap`) with `apiVersion: khook.io/v1`.
 - **Action key implies the type** — no `type:` discriminator. A step has exactly
   one action key (`helm:`, `apply:`, `delete:`, ... — schema: oneOf).
 - **`steps:` / `needs:`** replace v0's `operations:` / `dependsOn:`.

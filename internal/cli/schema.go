@@ -49,7 +49,7 @@ func generateSchema() (*jsonschema.Schema, error) {
 		},
 	}
 	schema := reflector.Reflect(&spec.Document{})
-	schema.ID = "https://khook.dvrkn.com/schema/v1/khook.json"
+	schema.ID = "https://khook.io/schema/v1/khook.json"
 	schema.Title = "Khook"
 
 	// The reflector cannot express "exactly one action key" — add the oneOf

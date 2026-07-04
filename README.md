@@ -30,7 +30,7 @@ and feared by everyone on call.
 khook replaces that gap with a declarative spec:
 
 ```yaml
-apiVersion: khook.dvrkn.com/v1
+apiVersion: khook.io/v1
 kind: Khook
 metadata:
   name: bootstrap

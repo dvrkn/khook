@@ -7,7 +7,7 @@ import (
 )
 
 const minimalSpec = `
-apiVersion: khook.dvrkn.com/v1
+apiVersion: khook.io/v1
 kind: Khook
 metadata:
   name: test
@@ -36,7 +36,7 @@ func TestParseMinimal(t *testing.T) {
 // unquoted key into boolean true. Guard the yaml.v3 choice.
 func TestParseWaitOnKeyword(t *testing.T) {
 	src := `
-apiVersion: khook.dvrkn.com/v1
+apiVersion: khook.io/v1
 kind: Khook
 metadata:
   name: test
@@ -65,7 +65,7 @@ func TestParseUnknownFieldRejected(t *testing.T) {
 
 func TestParseDurationsAndDefaults(t *testing.T) {
 	src := `
-apiVersion: khook.dvrkn.com/v1
+apiVersion: khook.io/v1
 kind: Khook
 metadata:
   name: test
@@ -133,7 +133,7 @@ func TestParseExamples(t *testing.T) {
 
 func TestParseWhenSetsExcluded(t *testing.T) {
 	src := `
-apiVersion: khook.dvrkn.com/v1
+apiVersion: khook.io/v1
 kind: Khook
 metadata:
   name: test

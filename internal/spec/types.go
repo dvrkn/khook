@@ -1,4 +1,4 @@
-// Package spec defines the khook DSL (apiVersion khook.dvrkn.com/v1, kind
+// Package spec defines the khook DSL (apiVersion khook.io/v1, kind
 // Khook), its parser, variable substitution, and validation. docs/dsl.md is
 // the normative reference for every field here.
 package spec
@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	APIVersion = "khook.dvrkn.com/v1"
+	APIVersion = "khook.io/v1"
 	Kind       = "Khook"
 )
 

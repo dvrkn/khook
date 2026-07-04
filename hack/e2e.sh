@@ -169,7 +169,7 @@ log "asserting failure exit code"
 set +e
 "${KHOOK}" apply --kubeconfig "${KUBECONFIG_FILE}" \
   -f /dev/stdin --set _unused=1 <<'EOF' >/dev/null 2>&1
-apiVersion: khook.dvrkn.com/v1
+apiVersion: khook.io/v1
 kind: Khook
 metadata:
   name: must-fail
