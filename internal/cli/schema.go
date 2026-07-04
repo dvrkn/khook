@@ -58,7 +58,7 @@ func generateSchema() (*jsonschema.Schema, error) {
 	if !ok {
 		return nil, fmt.Errorf("schema generation: Step definition missing")
 	}
-	for _, action := range []string{"helm", "apply", "delete", "wait", "rollout", "job"} {
+	for _, action := range []string{"helm", "apply", "delete", "patch", "wait", "rollout", "job"} {
 		step.OneOf = append(step.OneOf, &jsonschema.Schema{Required: []string{action}})
 	}
 	return schema, nil

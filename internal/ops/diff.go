@@ -25,17 +25,42 @@ import (
 
 // Diff renders kubectl-diff-style unified diffs of the objects Execute would
 // change: a server-side dry-run per manifest for apply steps, a chart dry-run
-// render against the stored release manifest for helm steps. Empty output
-// means no changes; step types without rendered objects (delete, wait,
-// rollout) always yield "". Like Plan, Diff never mutates the cluster.
+// render against the stored release manifest for helm steps, a dry-run patch
+// for patch steps. Empty output means no changes; step types without rendered
+// objects (delete, wait, rollout) always yield "". Like Plan, Diff never
+// mutates the cluster.
 func (e *Executor) Diff(ctx context.Context, step *spec.Step) (string, error) {
 	switch {
 	case step.Helm != nil:
 		return e.diffHelm(ctx, step)
 	case step.Apply != nil:
 		return e.diffApply(ctx, step)
+	case step.Patch != nil:
+		return e.diffPatch(ctx, step)
 	}
 	return "", nil
+}
+
+// diffPatch asks the API server what the patch would produce (server
+// dry-run) and diffs it against the live object.
+func (e *Executor) diffPatch(ctx context.Context, step *spec.Step) (string, error) {
+	op := step.Patch
+	ri, name, err := e.patchClient(op)
+	if err != nil {
+		return fmt.Sprintf("cannot diff %s: %v\n", op.Target, err), nil
+	}
+	live, err := ri.Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Sprintf("cannot diff %s: not found — must exist by the time this step runs\n", op.Target), nil
+		}
+		return "", fmt.Errorf("reading %s: %w", op.Target, err)
+	}
+	planned, err := e.doPatch(ctx, ri, op, name, true)
+	if err != nil {
+		return fmt.Sprintf("cannot diff %s: %v\n", op.Target, err), nil
+	}
+	return objectDiff(live, planned, op.Target)
 }
 
 func (e *Executor) diffHelm(ctx context.Context, step *spec.Step) (string, error) {

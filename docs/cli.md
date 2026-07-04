@@ -71,6 +71,7 @@ live cluster (reads only; plan never mutates anything):
 | `helm:` | `install` (no release history), `upgrade` (shows current revision, chart version, status → target chart), or `skip` (`skipIfInstalled`) |
 | `apply:` | `create` / `configure`, listing which objects are new vs existing, or `skip` (`skipIfExists`) |
 | `delete:` | `delete` (named object or selector match count) or `no-op` (already absent) |
+| `patch:` | `configure` (target exists) or `unknown` (target must exist by the time the step runs) |
 | `wait:` | `no-op` when the condition already holds, `wait` otherwise (shows how many objects currently match) |
 | `rollout:` | `restart`, `no-op` (rollout already complete), or `wait` |
 | `job:` | `run` (first run or replacing a previous Job) or `skip` (`skipIfSucceeded`) |
@@ -92,6 +93,8 @@ would change something (`install`/`upgrade`/`create`/`configure`):
 - `helm:` steps dry-run render the chart (server dry-run: real cluster
   capabilities, nothing stored) and diff it against the manifest of the
   release's last revision. An install diffs against empty — all additions.
+- `patch:` steps send the patch as a **server dry-run** and diff the result
+  against the live object.
 - `delete:` / `wait:` / `rollout:` / `job:` steps have no rendered objects;
   the plan line already says what happens.
 

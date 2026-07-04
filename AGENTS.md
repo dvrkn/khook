@@ -29,7 +29,7 @@ Layout: `cmd/khook` (main), `internal/spec` (types/parse/validate/variables),
 ## Decisions already made (don't re-litigate)
 
 - Name: `khook`; module path, binary, and docs all use it. Spec kind: `Khook`.
-- DSL shape: action key implies type (`helm:`/`apply:`/`delete:`/`wait:`/`rollout:`),
+- DSL shape: action key implies type (`helm:`/`apply:`/`delete:`/`patch:`/`wait:`/`rollout:`/`job:`),
   `steps:` + `needs:`, top-level `defaults:` — details in `docs/dsl.md`.
 - Variables: `${VAR}` / `${VAR:-default}` / `${VAR|sprig pipeline}` (hermetic
   sprig set, values never template-parsed — see `docs/dsl.md`); env vars

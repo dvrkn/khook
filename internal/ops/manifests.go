@@ -12,6 +12,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
+	"sigs.k8s.io/kustomize/api/krusty"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 
 	"github.com/dvrkn/khook/internal/spec"
 )
@@ -62,8 +64,23 @@ func readSource(ctx context.Context, src spec.ManifestSource) (raw []byte, origi
 	case src.URL != "":
 		raw, err := fetchURL(ctx, src.URL)
 		return raw, src.URL, err
+	case src.Kustomize != "":
+		raw, err := renderKustomize(src.Kustomize)
+		return raw, src.Kustomize, err
 	}
 	return nil, "", fmt.Errorf("manifest source is empty")
+}
+
+// renderKustomize builds a local kustomization directory in-process.
+// Kustomizations referencing remote bases fail here: kustomize shells out to
+// git for those, which khook's zero-runtime-deps rule excludes.
+func renderKustomize(path string) ([]byte, error) {
+	k := krusty.MakeKustomizer(krusty.MakeDefaultOptions())
+	resMap, err := k.Run(filesys.MakeFsOnDisk(), path)
+	if err != nil {
+		return nil, fmt.Errorf("rendering kustomization: %w", err)
+	}
+	return resMap.AsYaml()
 }
 
 // fetchURL GETs a URL and returns its body; a non-200 status is an error.

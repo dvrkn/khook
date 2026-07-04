@@ -87,13 +87,13 @@ func Validate(doc *Document) error {
 
 		switch step.actionCount() {
 		case 0:
-			addf("%s: needs exactly one action key (helm, apply, delete, wait, rollout, job), got none", where)
+			addf("%s: needs exactly one action key (helm, apply, delete, patch, wait, rollout, job), got none", where)
 		case 1:
 			if err := validateAction(step); err != nil {
 				addf("%s: %v", where, err)
 			}
 		default:
-			addf("%s: needs exactly one action key (helm, apply, delete, wait, rollout, job), got %d", where, step.actionCount())
+			addf("%s: needs exactly one action key (helm, apply, delete, patch, wait, rollout, job), got %d", where, step.actionCount())
 		}
 	}
 
@@ -128,6 +128,8 @@ func validateAction(step *Step) error {
 		return validateApply(step.Apply)
 	case step.Delete != nil:
 		return validateDelete(step.Delete)
+	case step.Patch != nil:
+		return validatePatch(step.Patch)
 	case step.Wait != nil:
 		return validateWait(step.Wait)
 	case step.Rollout != nil:
@@ -157,10 +159,18 @@ func validateHelm(op *HelmOp) error {
 func validateManifests(prefix string, manifests []ManifestSource) error {
 	for i := range manifests {
 		if manifests[i].sourceCount() != 1 {
-			return fmt.Errorf("%s: manifests[%d] must set exactly one of inline, file, url", prefix, i)
+			return fmt.Errorf("%s: manifests[%d] must set exactly one of inline, file, url, kustomize", prefix, i)
+		}
+		if k := manifests[i].Kustomize; k != "" && !isLocalPath(k) {
+			return fmt.Errorf("%s: manifests[%d] kustomize must be a local path (./, ../, or /), got %q — remote kustomizations are not supported", prefix, i, k)
 		}
 	}
 	return nil
+}
+
+// isLocalPath mirrors isChartPath: only explicit path shapes count.
+func isLocalPath(p string) bool {
+	return strings.HasPrefix(p, "./") || strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/")
 }
 
 func validateApply(op *ApplyOp) error {
@@ -169,6 +179,15 @@ func validateApply(op *ApplyOp) error {
 	}
 	if op.CreateNamespace && op.Namespace == "" {
 		return errors.New("apply: createNamespace requires namespace")
+	}
+	if op.WaitFor != "" {
+		wf, err := ParseWaitFor(op.WaitFor)
+		if err != nil {
+			return fmt.Errorf("apply: waitFor: %w", err)
+		}
+		if wf.Mode == WaitForDelete {
+			return errors.New("apply: waitFor cannot be \"delete\" — use a delete: or wait: step")
+		}
 	}
 	return validateManifests("apply", op.Manifests)
 }
@@ -210,14 +229,35 @@ func validateWait(op *WaitOp) error {
 	if op.On == "" {
 		return errors.New("wait: on is required")
 	}
-	if op.For != "delete" && !strings.HasPrefix(op.For, "condition=") {
-		return fmt.Errorf("wait: for must be \"condition=<Name>[=<value>]\" or \"delete\", got %q", op.For)
-	}
-	if op.For == "condition=" {
-		return errors.New("wait: condition name is empty")
+	if _, err := ParseWaitFor(op.For); err != nil {
+		return fmt.Errorf("wait: %w", err)
 	}
 	if op.Namespace != "" && op.AllNamespaces {
 		return errors.New("wait: namespace and allNamespaces are mutually exclusive")
+	}
+	return nil
+}
+
+func validatePatch(op *PatchOp) error {
+	kind, name, ok := strings.Cut(op.Target, "/")
+	if !ok || kind == "" || name == "" {
+		return fmt.Errorf("patch: target must be <kind>/<name>, got %q", op.Target)
+	}
+	switch op.Type {
+	case "", PatchStrategic, PatchMerge, PatchJSON:
+	default:
+		return fmt.Errorf("patch: type must be %q, %q, or %q, got %q", PatchStrategic, PatchMerge, PatchJSON, op.Type)
+	}
+	if len(op.Patch) == 0 {
+		return errors.New("patch: patch body is required")
+	}
+	body := strings.TrimSpace(string(op.Patch))
+	if op.PatchType() == PatchJSON {
+		if !strings.HasPrefix(body, "[") {
+			return errors.New("patch: type json requires a list of operations (op/path/value)")
+		}
+	} else if !strings.HasPrefix(body, "{") {
+		return fmt.Errorf("patch: a %s patch must be a mapping", op.PatchType())
 	}
 	return nil
 }

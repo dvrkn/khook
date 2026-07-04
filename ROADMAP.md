@@ -31,9 +31,6 @@ the [README](README.md); when an item here ships, it moves there.
 *Goal: cover the real bootstrap cases (`examples/real-case.yaml` and beyond)
 without escape hatches.*
 
-- [ ] **Kubectl depth**: prune/patch actions, `waitFor` shorthand on apply (apply
-      + wait in one step), kustomize source (`sigs.k8s.io/kustomize` comes in
-      transitively with the Helm SDK anyway), `wait.for: jsonpath=...`.
 - [ ] **apiVersion `v1` freeze**: publish the JSON schema (raw GitHub URL + JSON
       Schema Store) so editors autocomplete via `# yaml-language-server`.
 
@@ -82,6 +79,7 @@ without escape hatches.*
 ## Explicit non-goals
 
 - **Not a GitOps engine.** No watch loops, no drift reconciliation — install Argo/Flux and hand off.
+- **No `apply.prune`.** Pruning is drift reconciliation (see above): Argo/Flux own it, `delete:` owns explicit absence. kubectl's own `--prune` is quasi-deprecated and its ApplySet successor still alpha — nothing worth freezing into the spec.
 - **Not a package manager.** No chart authoring, no chart repository hosting.
 - **Not a cluster provisioner.** Terraform/eksctl/CAPI create the cluster; we start where they stop.
 - **Not a data bus.** Steps do not pass values through khook (no `${outputs.*}`, no job output capture): late-bound data would make consumer steps unplannable and re-substitution would break the load-time model. In-cluster, a `job` writes a Secret/ConfigMap and consumers reference it *by name* (`secretKeyRef`, `existingSecret`-style chart values) — the name is static and plannable, the value flows through the API server. Out-of-cluster values are variables (env-first); cross-resource wiring after bootstrap belongs to the operators khook hands off to.

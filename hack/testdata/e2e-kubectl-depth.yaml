@@ -1,0 +1,82 @@
+# E2E coverage for the kubectl-depth features: apply.waitFor (apply + wait
+# in one step), jsonpath waits, patch (strategic and json), and the
+# kustomize manifest source.
+apiVersion: khook.io/v1
+kind: Khook
+metadata:
+  name: e2e-kubectl-depth
+
+defaults:
+  timeout: 3m
+
+steps:
+  # waitFor gates the step on the applied object itself: the step succeeds
+  # only once the Deployment is Available.
+  - name: workload
+    apply:
+      namespace: ${KD_NAMESPACE}
+      createNamespace: true
+      waitFor: condition=Available
+      manifests:
+        - inline: |
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: depth-echo
+              namespace: ${KD_NAMESPACE}
+              labels:
+                app: depth-echo
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: depth-echo
+              template:
+                metadata:
+                  labels:
+                    app: depth-echo
+                spec:
+                  containers:
+                  - name: echo
+                    image: rancher/mirrored-pause:3.6
+
+  # jsonpath wait on a status field no condition covers.
+  - name: ready-by-jsonpath
+    needs: [workload]
+    wait:
+      for: jsonpath={.status.readyReplicas}=1
+      on: deployment/depth-echo
+      namespace: ${KD_NAMESPACE}
+
+  # Strategic merge patch (the default type) against a live object this
+  # spec's apply manifest does not fully own.
+  - name: patch-strategic
+    needs: [workload]
+    patch:
+      target: deployment/depth-echo
+      namespace: ${KD_NAMESPACE}
+      patch:
+        metadata:
+          annotations:
+            khook.io/patched: "yes"
+
+  # Kustomize source: namePrefix + patch applied in-process.
+  - name: kustomized
+    needs: [workload]
+    apply:
+      namespace: ${KD_NAMESPACE}
+      manifests:
+        - kustomize: ${KUSTOMIZE_DIR}
+
+  # JSON patch; "add" on a map key is idempotent (unlike "remove"), so the
+  # whole spec re-applies cleanly.
+  - name: patch-json
+    needs: [kustomized]
+    patch:
+      target: configmap/prod-e2e-settings
+      namespace: ${KD_NAMESPACE}
+      type: json
+      patch:
+        - op: add
+          path: /data/added
+          value: "yes"

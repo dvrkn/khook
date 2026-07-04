@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -205,6 +206,95 @@ func TestApplyMultiDocument(t *testing.T) {
 	}
 }
 
+const podYAML = `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: waiter
+status:
+  phase: Running
+  conditions:
+    - type: Ready
+      status: "True"
+`
+
+func TestApplyWaitForMet(t *testing.T) {
+	// The fake tracker persists status from the manifest itself, so the
+	// applied object immediately meets the condition.
+	e, _, _ := testExecutor(t)
+	step := applyStep("pod", &spec.ApplyOp{
+		Namespace: "ns1",
+		WaitFor:   "condition=Ready",
+		Manifests: []spec.ManifestSource{{Inline: podYAML}},
+	})
+	if err := e.Execute(context.Background(), step); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestApplyWaitForTimesOut(t *testing.T) {
+	e, _, _ := testExecutor(t)
+	step := applyStep("cm", &spec.ApplyOp{
+		Namespace: "ns1",
+		WaitFor:   "jsonpath={.status.ready}=true",
+		Manifests: []spec.ManifestSource{{Inline: configMapYAML}},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := e.Execute(ctx, step); err == nil {
+		t.Fatal("want timeout error")
+	}
+}
+
+func TestApplyWaitForRunsOnSkipIfExists(t *testing.T) {
+	existing := unstructuredPod("waiter", "ns1", nil, false) // Ready=False
+	e, _, _ := testExecutor(t, existing)
+	step := applyStep("pod", &spec.ApplyOp{
+		Namespace:    "ns1",
+		SkipIfExists: true,
+		WaitFor:      "condition=Ready",
+		Manifests:    []spec.ManifestSource{{Inline: podYAML}},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := e.Execute(ctx, step); err == nil {
+		t.Fatal("waitFor must still gate the step when skipIfExists short-circuits")
+	}
+}
+
+func TestApplyKustomize(t *testing.T) {
+	e, dyn, _ := testExecutor(t)
+	step := applyStep("kz", &spec.ApplyOp{
+		Namespace: "ns1",
+		Manifests: []spec.ManifestSource{{Kustomize: "./testdata/kustomize"}},
+	})
+	if err := e.Execute(context.Background(), step); err != nil {
+		t.Fatal(err)
+	}
+	got, err := dyn.Resource(corev1.SchemeGroupVersion.WithResource("configmaps")).
+		Namespace("ns1").Get(context.Background(), "prod-settings", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("kustomized configmap (namePrefix applied) not created: %v", err)
+	}
+	if env, _, _ := unstructured.NestedString(got.Object, "data", "env"); env != "prod" {
+		t.Fatalf("data.env = %q, want patched value prod", env)
+	}
+	if color, _, _ := unstructured.NestedString(got.Object, "data", "color"); color != "blue" {
+		t.Fatalf("data.color = %q, want base value blue", color)
+	}
+}
+
+func TestKustomizeRenderError(t *testing.T) {
+	e, _, _ := testExecutor(t)
+	step := applyStep("kz", &spec.ApplyOp{
+		Manifests: []spec.ManifestSource{{Kustomize: "./testdata/does-not-exist"}},
+	})
+	err := e.Execute(context.Background(), step)
+	if err == nil || !strings.Contains(err.Error(), "rendering kustomization") {
+		t.Fatalf("want kustomize render error, got %v", err)
+	}
+}
+
 func TestDeleteByName(t *testing.T) {
 	e, dyn, _ := testExecutor(t, unstructuredPod("victim", "ns1", nil, true))
 	step := deleteStep("del", &spec.DeleteOp{Resource: "pod/victim", Namespace: "ns1"})
@@ -252,6 +342,70 @@ func TestDeleteBySelector(t *testing.T) {
 	}
 }
 
+func patchStep(name string, op *spec.PatchOp) *spec.Step { return &spec.Step{Name: name, Patch: op} }
+
+func existingConfigMap() *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata":   map[string]any{"name": "demo", "namespace": "ns1"},
+		"data":       map[string]any{"keep": "yes", "drop": "no"},
+	}}
+}
+
+func TestPatchMerge(t *testing.T) {
+	e, dyn, _ := testExecutor(t, existingConfigMap())
+	step := patchStep("p", &spec.PatchOp{
+		Target:    "configmap/demo",
+		Namespace: "ns1",
+		Type:      spec.PatchMerge,
+		Patch:     []byte(`{"data":{"added":"new"}}`),
+	})
+	if err := e.Execute(context.Background(), step); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := dyn.Resource(corev1.SchemeGroupVersion.WithResource("configmaps")).
+		Namespace("ns1").Get(context.Background(), "demo", metav1.GetOptions{})
+	if val, _, _ := unstructured.NestedString(got.Object, "data", "added"); val != "new" {
+		t.Fatalf("data.added = %q, want new", val)
+	}
+	if val, _, _ := unstructured.NestedString(got.Object, "data", "keep"); val != "yes" {
+		t.Fatalf("data.keep = %q; merge patch must not clobber siblings", val)
+	}
+}
+
+func TestPatchJSON(t *testing.T) {
+	e, dyn, _ := testExecutor(t, existingConfigMap())
+	step := patchStep("p", &spec.PatchOp{
+		Target:    "configmap/demo",
+		Namespace: "ns1",
+		Type:      spec.PatchJSON,
+		Patch:     []byte(`[{"op":"remove","path":"/data/drop"}]`),
+	})
+	if err := e.Execute(context.Background(), step); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := dyn.Resource(corev1.SchemeGroupVersion.WithResource("configmaps")).
+		Namespace("ns1").Get(context.Background(), "demo", metav1.GetOptions{})
+	if _, found, _ := unstructured.NestedString(got.Object, "data", "drop"); found {
+		t.Fatal("data.drop still present after json remove")
+	}
+}
+
+func TestPatchMissingTargetFails(t *testing.T) {
+	e, _, _ := testExecutor(t)
+	step := patchStep("p", &spec.PatchOp{
+		Target:    "configmap/ghost",
+		Namespace: "ns1",
+		Type:      spec.PatchMerge,
+		Patch:     []byte(`{"data":{}}`),
+	})
+	err := e.Execute(context.Background(), step)
+	if err == nil || !strings.Contains(err.Error(), "must exist") {
+		t.Fatalf("want missing-target error, got %v", err)
+	}
+}
+
 func TestWaitConditionAlreadyMet(t *testing.T) {
 	e, _, _ := testExecutor(t,
 		unstructuredPod("a", "ns1", nil, true),
@@ -270,6 +424,41 @@ func TestWaitConditionTimesOut(t *testing.T) {
 	defer cancel()
 	if err := e.Execute(ctx, step); err == nil {
 		t.Fatal("want timeout error")
+	}
+}
+
+func TestWaitJSONPath(t *testing.T) {
+	pod := unstructuredPod("a", "ns1", nil, true)
+	pod.Object["status"].(map[string]any)["phase"] = "Running"
+	e, _, _ := testExecutor(t, pod)
+
+	for _, forExpr := range []string{
+		"jsonpath={.status.phase}=Running",
+		"jsonpath=.status.phase=Running",
+		"jsonpath={.status.phase}", // existence: any non-empty value
+		`jsonpath={.status.conditions[?(@.type=="Ready")].status}=True`,
+	} {
+		step := &spec.Step{Name: "w", Wait: &spec.WaitOp{For: forExpr, On: "pods", Namespace: "ns1"}}
+		if err := e.Execute(context.Background(), step); err != nil {
+			t.Fatalf("%s: %v", forExpr, err)
+		}
+	}
+}
+
+func TestWaitJSONPathTimesOut(t *testing.T) {
+	pod := unstructuredPod("a", "ns1", nil, true)
+	pod.Object["status"].(map[string]any)["phase"] = "Pending"
+	e, _, _ := testExecutor(t, pod)
+	for _, forExpr := range []string{
+		"jsonpath={.status.phase}=Running", // wrong value
+		"jsonpath={.status.hostIP}",        // missing key: not yet, keeps polling
+	} {
+		step := &spec.Step{Name: "w", Wait: &spec.WaitOp{For: forExpr, On: "pods", Namespace: "ns1"}}
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		if err := e.Execute(ctx, step); err == nil {
+			t.Fatalf("%s: want timeout error", forExpr)
+		}
+		cancel()
 	}
 }
 

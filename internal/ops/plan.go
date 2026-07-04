@@ -50,6 +50,8 @@ func (e *Executor) Plan(ctx context.Context, step *spec.Step) Assessment {
 		return e.planApply(ctx, step)
 	case step.Delete != nil:
 		return e.planDelete(ctx, step)
+	case step.Patch != nil:
+		return e.planPatch(ctx, step)
 	case step.Wait != nil:
 		return e.planWait(ctx, step)
 	case step.Rollout != nil:
@@ -133,7 +135,11 @@ func (e *Executor) planApply(ctx context.Context, step *spec.Step) Assessment {
 	}
 
 	if op.SkipIfExists && len(creates) == 0 && len(unresolved) == 0 {
-		return Assessment{ActionSkip, fmt.Sprintf("skipIfExists: all %d resource(s) exist", len(updates))}
+		detail := fmt.Sprintf("skipIfExists: all %d resource(s) exist", len(updates))
+		if op.WaitFor != "" {
+			detail += "; still waits for " + op.WaitFor
+		}
+		return Assessment{ActionSkip, detail}
 	}
 
 	var parts []string
@@ -150,6 +156,9 @@ func (e *Executor) planApply(ctx context.Context, step *spec.Step) Assessment {
 		if note := e.namespaceNote(ctx, op.Namespace, true); note != "" {
 			parts = append(parts, note)
 		}
+	}
+	if op.WaitFor != "" {
+		parts = append(parts, "then waits for "+op.WaitFor)
 	}
 
 	action := ActionConfigure
@@ -268,6 +277,22 @@ func (e *Executor) planDeleteByManifests(ctx context.Context, op *spec.DeleteOp)
 	return Assessment{ActionDelete, detail}
 }
 
+func (e *Executor) planPatch(ctx context.Context, step *spec.Step) Assessment {
+	op := step.Patch
+	ri, name, err := e.patchClient(op)
+	if err != nil {
+		return unknown(fmt.Errorf("unknown resource type in %q (kind may arrive in an earlier step)", op.Target))
+	}
+	_, err = ri.Get(ctx, name, metav1.GetOptions{})
+	switch {
+	case err == nil:
+		return Assessment{ActionConfigure, fmt.Sprintf("patches %s (%s)", op.Target, op.PatchType())}
+	case apierrors.IsNotFound(err):
+		return Assessment{ActionUnknown, op.Target + " not found — must exist by the time this step runs"}
+	}
+	return unknown(fmt.Errorf("checking %s: %w", op.Target, err))
+}
+
 func (e *Executor) planWait(ctx context.Context, step *spec.Step) Assessment {
 	op := step.Wait
 	typeArg, name, hasName := strings.Cut(op.On, "/")
@@ -281,7 +306,11 @@ func (e *Executor) planWait(ctx context.Context, step *spec.Step) Assessment {
 		return unknown(err)
 	}
 
-	if op.For == "delete" {
+	wf, err := spec.ParseWaitFor(op.For)
+	if err != nil {
+		return unknown(err)
+	}
+	if wf.Mode == spec.WaitForDelete {
 		if len(objs) == 0 {
 			return Assessment{ActionNone, op.On + " already absent"}
 		}
@@ -291,10 +320,13 @@ func (e *Executor) planWait(ctx context.Context, step *spec.Step) Assessment {
 	if len(objs) == 0 {
 		return Assessment{ActionWait, fmt.Sprintf("no matches for %s yet; waits for %s", op.On, op.For)}
 	}
-	condName, condValue := parseCondition(op.For)
+	check, err := waitChecker(wf)
+	if err != nil {
+		return unknown(err)
+	}
 	met := 0
 	for _, obj := range objs {
-		ok, err := hasCondition(obj, condName, condValue)
+		ok, err := check(obj)
 		if err != nil {
 			return unknown(err)
 		}

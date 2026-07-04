@@ -1,0 +1,69 @@
+# The kubectl-depth features in one spec: apply+wait in one step (waitFor),
+# jsonpath waits, in-place patching (strategic/merge/json), and kustomize
+# manifest sources.
+apiVersion: khook.io/v1
+kind: Khook
+metadata:
+  name: kubectl-depth-demo
+
+steps:
+  # Apply CRDs and block until the API server established them — the
+  # `kubectl apply -f x && kubectl wait --for=... -f x` one-two in one step.
+  - name: gateway-crds
+    apply:
+      waitFor: condition=Established
+      manifests:
+        - url: https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+
+  # A kustomize overlay shipped alongside the spec (local paths only —
+  # remote bases would need a git binary, which khook doesn't have).
+  - name: platform-config
+    apply:
+      namespace: platform
+      createNamespace: true
+      manifests:
+        - kustomize: ./overlays/prod
+
+  # Strategic merge patch (the default type) — evict aws-node before Cilium
+  # takes over, without owning the DaemonSet's manifest.
+  - name: evict-aws-node
+    patch:
+      target: daemonset/aws-node
+      namespace: kube-system
+      patch:
+        spec:
+          template:
+            spec:
+              nodeSelector:
+                khook.io/non-existing: "true"
+
+  # Merge patch works on custom resources too (strategic does not).
+  - name: default-storage-class
+    patch:
+      target: storageclass/gp3
+      type: merge
+      patch:
+        metadata:
+          annotations:
+            storageclass.kubernetes.io/is-default-class: "true"
+
+  # JSON patch for list surgery and field removal. Mind idempotency: a
+  # `remove` of an already-removed path fails on re-runs — prefer
+  # strategic/merge where possible.
+  - name: drop-legacy-key
+    patch:
+      target: configmap/argocd-cm
+      namespace: argocd
+      type: json
+      patch:
+        - op: replace
+          path: /data/timeout.reconciliation
+          value: "300s"
+
+  # Wait on any status field, not just conditions — kubectl's
+  # --for=jsonpath=... with the same relaxed syntax.
+  - name: coredns-scaled
+    wait:
+      for: jsonpath={.status.readyReplicas}=2
+      on: deployment/coredns
+      namespace: kube-system

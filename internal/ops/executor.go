@@ -43,6 +43,8 @@ func (e *Executor) Execute(ctx context.Context, step *spec.Step) error {
 		return e.runApply(ctx, step)
 	case step.Delete != nil:
 		return e.runDelete(ctx, step)
+	case step.Patch != nil:
+		return e.runPatch(ctx, step)
 	case step.Wait != nil:
 		return e.runWait(ctx, step)
 	case step.Rollout != nil:

@@ -96,15 +96,16 @@ Run it again — everything converges, nothing breaks. That's the point.
 
 ## How it works
 
-A spec is a set of **steps**, each with exactly one action. Six verbs cover
+A spec is a set of **steps**, each with exactly one action. Seven verbs cover
 the bootstrap surface:
 
 | Verb | What it does | Instead of |
 |---|---|---|
 | `helm:` | install-or-upgrade a chart (history decides) | `helm repo add` + `helm upgrade --install` |
-| `apply:` | apply manifests — inline, file, or URL | `kubectl apply -f` |
+| `apply:` | apply manifests — inline, file, URL, or kustomize — optionally waiting on them (`waitFor`) | `kubectl apply -f/-k` (`&& kubectl wait`) |
 | `delete:` | remove resources by manifest or selector | `kubectl delete` |
-| `wait:` | block until a condition holds (or gone) | `kubectl wait` + `sleep`-and-pray |
+| `patch:` | modify a resource in place (strategic/merge/json) | `kubectl patch` |
+| `wait:` | block until a condition or jsonpath holds (or gone) | `kubectl wait` + `sleep`-and-pray |
 | `rollout:` | restart / await workload rollouts | `kubectl rollout restart/status` |
 | `job:` | run a container to completion in-cluster | one-off `kubectl run` / bash scripts |
 

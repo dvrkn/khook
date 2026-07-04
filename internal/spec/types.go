@@ -76,7 +76,7 @@ var (
 )
 
 // Step is one node of the DAG. Exactly one action key (Helm, Apply, Delete,
-// Wait, Rollout, Job) must be set.
+// Patch, Wait, Rollout, Job) must be set.
 type Step struct {
 	Name  string   `json:"name"`
 	Needs []string `json:"needs,omitempty"`
@@ -91,6 +91,7 @@ type Step struct {
 	Helm    *HelmOp    `json:"helm,omitempty"`
 	Apply   *ApplyOp   `json:"apply,omitempty"`
 	Delete  *DeleteOp  `json:"delete,omitempty"`
+	Patch   *PatchOp   `json:"patch,omitempty"`
 	Wait    *WaitOp    `json:"wait,omitempty"`
 	Rollout *RolloutOp `json:"rollout,omitempty"`
 	Job     *JobOp     `json:"job,omitempty"`
@@ -110,6 +111,8 @@ func (s *Step) Type() string {
 		return "apply"
 	case s.Delete != nil:
 		return "delete"
+	case s.Patch != nil:
+		return "patch"
 	case s.Wait != nil:
 		return "wait"
 	case s.Rollout != nil:
@@ -123,7 +126,7 @@ func (s *Step) Type() string {
 // actionCount returns how many action keys are set (validation requires 1).
 func (s *Step) actionCount() int {
 	n := 0
-	for _, set := range []bool{s.Helm != nil, s.Apply != nil, s.Delete != nil, s.Wait != nil, s.Rollout != nil, s.Job != nil} {
+	for _, set := range []bool{s.Helm != nil, s.Apply != nil, s.Delete != nil, s.Patch != nil, s.Wait != nil, s.Rollout != nil, s.Job != nil} {
 		if set {
 			n++
 		}
@@ -229,16 +232,19 @@ func (v *ValuesSource) sourceCount() int {
 	return n
 }
 
-// ManifestSource holds exactly one of Inline / File / URL.
+// ManifestSource holds exactly one of Inline / File / URL / Kustomize.
+// Kustomize is a local kustomization directory rendered in-process; remote
+// bases are unsupported (kustomize shells out to git for those).
 type ManifestSource struct {
-	Inline string `json:"inline,omitempty"`
-	File   string `json:"file,omitempty"`
-	URL    string `json:"url,omitempty"`
+	Inline    string `json:"inline,omitempty"`
+	File      string `json:"file,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Kustomize string `json:"kustomize,omitempty"`
 }
 
 func (m *ManifestSource) sourceCount() int {
 	n := 0
-	for _, set := range []bool{m.Inline != "", m.File != "", m.URL != ""} {
+	for _, set := range []bool{m.Inline != "", m.File != "", m.URL != "", m.Kustomize != ""} {
 		if set {
 			n++
 		}
@@ -253,6 +259,10 @@ type ApplyOp struct {
 	CreateNamespace bool             `json:"createNamespace,omitempty"`
 	SkipIfExists    bool             `json:"skipIfExists,omitempty"`
 	ServerSide      bool             `json:"serverSide,omitempty"`
+	// WaitFor blocks the step after applying until every applied object
+	// meets the condition — wait.for's grammar minus "delete". It also runs
+	// when skipIfExists short-circuits, so re-runs stay equivalent.
+	WaitFor string `json:"waitFor,omitempty"`
 }
 
 // DeleteOp removes resources: by manifests, by reference/selector, or —
@@ -296,6 +306,32 @@ type WaitOp struct {
 	Namespace     string `json:"namespace,omitempty"`
 	AllNamespaces bool   `json:"allNamespaces,omitempty"`
 	Selector      string `json:"selector,omitempty"`
+	FieldSelector string `json:"fieldSelector,omitempty"`
+}
+
+// Patch types patch: accepts, mapping 1:1 to Kubernetes patch content types.
+const (
+	PatchStrategic = "strategic"
+	PatchMerge     = "merge"
+	PatchJSON      = "json"
+)
+
+// PatchOp patches one existing resource in place — kubectl patch. The body
+// is raw JSON (the parser converts spec YAML to JSON): an object for
+// strategic/merge, an array of operations for json.
+type PatchOp struct {
+	Target    string          `json:"target"`
+	Namespace string          `json:"namespace,omitempty"`
+	Type      string          `json:"type,omitempty"`
+	Patch     json.RawMessage `json:"patch,omitempty"`
+}
+
+// PatchType defaults to strategic merge, kubectl's default.
+func (p *PatchOp) PatchType() string {
+	if p.Type != "" {
+		return p.Type
+	}
+	return PatchStrategic
 }
 
 // RolloutOp runs an imperative rollout command: exactly one of Restart /

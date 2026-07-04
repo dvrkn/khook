@@ -93,7 +93,7 @@ steps:
     retryDelay: 30s       # optional, overrides defaults
     onError: continue     # optional, overrides defaults
     helm: { ... }         # exactly ONE action key per step:
-                          #   helm | apply | delete | wait | rollout | job
+                          #   helm | apply | delete | patch | wait | rollout | job
 ```
 
 The action key determines the step type — there is no `type:` field. Zero or
@@ -241,15 +241,17 @@ YAML is supported in every source.
 
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
-| `manifests` | list | yes | | ordered list of sources, each exactly one of `inline:` (YAML string), `file:` (path), `url:` (HTTP(S)) |
+| `manifests` | list | yes | | ordered list of sources, each exactly one of `inline:` (YAML string), `file:` (path), `url:` (HTTP(S)), `kustomize:` (local kustomization directory) |
 | `namespace` | string | no | | default namespace for namespace-less namespaced resources |
 | `createNamespace` | bool | no | `false` | create `namespace` if missing |
 | `skipIfExists` | bool | no | `false` | skip (success) if all resources already exist |
 | `serverSide` | bool | no | `false` | server-side apply |
+| `waitFor` | string | no | | block until every applied object meets this — [`wait.for`'s grammar](#wait--block-until-a-condition-holds) minus `delete` |
 
 ```yaml
 apply:
   namespace: argocd
+  waitFor: condition=Established
   manifests:
     - inline: |
         apiVersion: argoproj.io/v1alpha1
@@ -257,10 +259,21 @@ apply:
         ...
     - file: ./manifests/extra.yaml
     - url: https://example.com/manifest.yaml
+    - kustomize: ./overlays/prod
 ```
 
-**(roadmap)** `prune`, `patch`, kustomize source, `waitFor:` shorthand
-(apply + wait in one step).
+`waitFor` — apply + wait in one step, the
+`kubectl apply -f x && kubectl wait --for=... -f x` equivalent: after the
+apply, the step polls **exactly the objects it applied** until each meets the
+condition, bounded by the step `timeout`. It also runs when `skipIfExists`
+short-circuits — the condition must hold whether this run created the objects
+or found them, so re-runs behave like first runs. Waiting on *other*
+resources (or a subset) is a separate `wait:` step.
+
+`kustomize:` sources are rendered in-process (`sigs.k8s.io/kustomize`) and
+must be **local** paths (`./`, `../`, or `/`). Kustomizations referencing
+remote bases fail: kustomize shells out to `git` for those, which the
+zero-runtime-deps rule excludes.
 
 ## `delete:` — remove resources
 
@@ -268,7 +281,8 @@ Three mutually exclusive forms. `helm:` owns presence, `delete:` owns
 absence — uninstalling a Helm release is the third form here, not a mode of
 `helm:`.
 
-**By manifests** (delete what these define):
+**By manifests** (delete what these define; same source list as
+`apply.manifests`, `kustomize:` included):
 
 ```yaml
 delete:
@@ -312,15 +326,66 @@ delete:
   namespace: ingress
 ```
 
+## `patch:` — modify a resource in place
+
+`kubectl patch`: change fields of a resource whose full manifest this spec
+does not own (a chart-installed DaemonSet, a default StorageClass, a CR).
+When the spec *does* own the manifest, prefer re-`apply:`ing it.
+
+| Field | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `target` | string | yes | | `kind/name` (`daemonset/aws-node`) |
+| `namespace` | string | no | `default` | ignored for cluster-scoped kinds |
+| `type` | string | no | `strategic` | `strategic` \| `merge` \| `json` |
+| `patch` | map or list | yes | | the patch body: a mapping for `strategic`/`merge`, a list of operations for `json` |
+
+```yaml
+patch:
+  target: daemonset/aws-node
+  namespace: kube-system
+  patch:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            khook.io/non-existing: "true"
+```
+
+Semantics:
+
+- The target must exist — a missing resource fails the step (order it after
+  whatever creates it with `needs:`).
+- `strategic` (the default, like kubectl) understands list merge keys of
+  built-in types but is **rejected by custom resources** — use `merge`
+  (RFC 7386) there; it works on every kind but replaces lists wholesale.
+- `json` (RFC 6902) is a list of `op`/`path`/`value` operations, for list
+  surgery and field removal. Mind idempotency: a `remove` of an
+  already-removed path or a list-index `add` fails on re-runs —
+  `strategic`/`merge` are naturally idempotent, prefer them.
+- `plan` reports the patch; `diff` shows the exact change via a server
+  dry-run of the patch.
+
+```yaml
+# merge for CRs / cluster-scoped targets; json for removals
+patch:
+  target: storageclass/gp3
+  type: merge
+  patch:
+    metadata:
+      annotations:
+        storageclass.kubernetes.io/is-default-class: "true"
+```
+
 ## `wait:` — block until a condition holds
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `for` | string | yes | `condition=<Name>`, `condition=<Name>=<value>`, or `delete` |
+| `for` | string | yes | `condition=<Name>[=<value>]`, `jsonpath=<expr>[=<value>]`, or `delete` |
 | `on` | string | yes | resource type (`pods`) or `kind/name` (`deployment/argocd-server`) |
 | `namespace` | string | no | mutually exclusive with `allNamespaces` |
 | `allNamespaces` | bool | no | |
 | `selector` | string | no | label selector |
+| `fieldSelector` | string | no | field selector |
 
 The step-level `timeout` bounds the wait — there is no separate `wait.timeout`.
 
@@ -331,7 +396,24 @@ wait:
   allNamespaces: true
 ```
 
-**(roadmap)** `for: jsonpath=...`.
+`for:` forms, matching `kubectl wait`:
+
+- `condition=<Name>` — `status.conditions[type==Name].status` is `"True"`;
+  `condition=<Name>=<value>` compares against another value.
+- `jsonpath=<expr>` — the expression yields at least one non-empty value;
+  `jsonpath=<expr>=<value>` — some yielded value equals `<value>`. kubectl's
+  relaxed syntax is accepted: `{.status.phase}`, `.status.phase`, and
+  `status.phase` are equivalent. A missing path means "not yet", not an
+  error. Expressions with filters (which contain `=`) need the braced form:
+  `jsonpath={.status.conditions[?(@.type=="Ready")].status}=True`.
+- `delete` — every matching resource is gone.
+
+```yaml
+wait:
+  for: jsonpath={.status.readyReplicas}=2
+  on: deployment/coredns
+  namespace: kube-system
+```
 
 ## `rollout:` — imperative rollout commands
 
@@ -412,17 +494,19 @@ What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
 | `helm install --username/--password` / `helm registry login` | `helm.auth` / URL userinfo | **v1 core** |
 | `kubectl apply -f file/url/-` | `apply:` | **v1 core** |
 | `kubectl apply --server-side` | `apply.serverSide` | **v1 core** |
+| `kubectl apply -k` (kustomize) | `apply.manifests: - kustomize:` (local) | **v1 core** |
+| `kubectl apply -f x && kubectl wait -f x` | `apply.waitFor` | **v1 core** |
 | `kubectl delete -f` / by selector | `delete:` | **v1 core** |
+| `kubectl patch` (strategic/merge/json) | `patch:` | **v1 core** |
 | `kubectl wait --for=condition=...` | `wait:` | **v1 core** |
+| `kubectl wait --for=jsonpath=...` | `wait.for: jsonpath=...` / `apply.waitFor` | **v1 core** |
 | `kubectl rollout restart/status` | `rollout:` | **v1 core** |
 | `kubectl create namespace` | `createNamespace: true` / `apply:` | **v1 core** |
 | arbitrary in-cluster commands | `job:` (container to completion) | **v1 core** |
 | `helm rollback` | — `atomic:` covers failed upgrades; re-applying the spec is the recovery path | non-goal |
-| `kubectl apply -k` (kustomize) | `apply.kustomize` (shape TBD) | roadmap P2 |
-| `kubectl apply --prune` / `patch` | `apply.prune` / `patch:` | roadmap P2 |
-| `kubectl label` / `annotate` | `apply:` a minimal manifest (existing objects are merge-patched, so `metadata.labels`/`annotations` land without touching the rest) | **v1 core** |
-| `kubectl scale` | `apply:` a minimal manifest with `spec.replicas` (same merge-patch mechanics) | **v1 core** |
-| `kubectl wait --for=jsonpath=` | `wait.for: jsonpath=...` | roadmap P2 |
+| `kubectl apply --prune` | — pruning is reconciliation; Argo/Flux own it, `delete:` owns explicit absence | non-goal |
+| `kubectl label` / `annotate` | `patch:` (or `apply:` a minimal manifest — existing objects are merge-patched) | **v1 core** |
+| `kubectl scale` | `patch:` `spec.replicas` (or `apply:` a minimal manifest) | **v1 core** |
 | `kubectl exec` / `cp` / `port-forward` | — interactive, out of scope | non-goal |
 | `kubectl get/describe` as output | — read paths belong to `plan`/`status` | non-goal |
 
@@ -460,3 +544,15 @@ they are not re-litigated:
 - **Prefixed environment variables**: only env vars starting with `KHOOK_VAR_`
   are consumed (`--var-prefix` to override), preventing unrelated environment
   (PATH, CI secrets) from leaking into specs.
+- **No `apply.prune`** — pruning is drift reconciliation, which khook hands
+  off to Argo/Flux; `delete:` owns explicit absence. kubectl's own `--prune`
+  is quasi-deprecated (its ApplySet successor is still alpha).
+- **`patch:` defaults to `strategic`** (kubectl parity, muscle memory) even
+  though strategic fails on CRs — the error hints at `type: merge`. The body
+  field is named `patch:` (kustomize's `target:`/`patch:` naming), accepting
+  a structured mapping/list rather than an embedded string.
+- **`apply.waitFor` is a plain string** waiting on exactly the applied
+  objects — scoping or waiting on other resources is what a `wait:` step is
+  for. It shares `wait.for`'s grammar rather than growing its own.
+- **`kustomize:` is a manifest source, not a step type** — one list, four
+  source shapes; local paths only (remote bases would need a `git` binary).

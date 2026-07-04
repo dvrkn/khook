@@ -12,6 +12,9 @@
 #   6. khook apply hack/testdata/e2e-ops.yaml (wait / rollout / delete / job coverage)
 #   7. helm depth: installs a chart from a local path, then uninstalls the
 #      release via delete.release and asserts the re-run is a no-op
+#   8. kubectl depth: apply.waitFor, jsonpath wait, patch (strategic + json),
+#      kustomize source — then asserts the re-run is idempotent and
+#      plan --diff reports no changes
 #
 # Usage:
 #   ./hack/e2e.sh                 # full run, cluster deleted at the end
@@ -192,6 +195,44 @@ k -n "${HELM_DEPTH_NS}" get configmap e2e-local-cm >/dev/null 2>&1 && fail "conf
 uninstall_spec apply
 plan_out="$(uninstall_spec plan)"
 grep -q 'already absent' <<<"${plan_out}" || fail "plan after uninstall should report already absent, got: ${plan_out}"
+
+# --- kubectl depth: waitFor, jsonpath wait, patch, kustomize -----------------
+KD_NS="e2e-kubectl-depth"
+
+kd_spec() {
+  local cmd="$1"
+  shift
+  "${KHOOK}" "${cmd}" --kubeconfig "${KUBECONFIG_FILE}" \
+    -f "${REPO_ROOT}/hack/testdata/e2e-kubectl-depth.yaml" \
+    --set KD_NAMESPACE="${KD_NS}" \
+    --set KUSTOMIZE_DIR="${REPO_ROOT}/hack/testdata/e2e-kustomize" \
+    "$@"
+}
+
+log "khook plan reports the patch target as not-yet-existing"
+plan_out="$(kd_spec plan)"
+grep -q "must exist by the time this step runs" <<<"${plan_out}" || fail "plan should flag the missing patch target, got: ${plan_out}"
+
+log "khook apply hack/testdata/e2e-kubectl-depth.yaml (waitFor/jsonpath/patch/kustomize)"
+kd_spec apply
+
+available="$(k -n "${KD_NS}" get deployment depth-echo -o jsonpath='{.status.availableReplicas}')"
+[[ "${available}" == "1" ]] || fail "waitFor: condition=Available passed but availableReplicas is '${available}'"
+annot="$(k -n "${KD_NS}" get deployment depth-echo -o jsonpath='{.metadata.annotations.khook\.io/patched}')"
+[[ "${annot}" == "yes" ]] || fail "strategic patch did not land, got '${annot}'"
+env_val="$(k -n "${KD_NS}" get configmap prod-e2e-settings -o jsonpath='{.data.env}')"
+[[ "${env_val}" == "prod" ]] || fail "kustomize namePrefix/patch not applied, got env '${env_val}'"
+color="$(k -n "${KD_NS}" get configmap prod-e2e-settings -o jsonpath='{.data.color}')"
+[[ "${color}" == "blue" ]] || fail "kustomize base data lost, got color '${color}'"
+added="$(k -n "${KD_NS}" get configmap prod-e2e-settings -o jsonpath='{.data.added}')"
+[[ "${added}" == "yes" ]] || fail "json patch did not land, got '${added}'"
+
+log "kubectl-depth re-run is idempotent; plan --diff reports no changes"
+kd_spec apply
+diff_out="$(kd_spec plan --diff)"
+grep -q "diff: no changes" <<<"${diff_out}" || fail "plan --diff on the applied kubectl-depth spec should report no changes, got: ${diff_out}"
+grep -q "diff: unavailable" <<<"${diff_out}" && fail "plan --diff should assess every kubectl-depth step, got: ${diff_out}"
+grep -q "already holds" <<<"${diff_out}" || fail "plan should report the jsonpath wait as already met, got: ${diff_out}"
 
 # --- failure semantics: a failing step must exit 1 and skip dependents -------
 log "asserting failure exit code"

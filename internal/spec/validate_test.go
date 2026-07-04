@@ -22,6 +22,32 @@ func TestValidateOK(t *testing.T) {
 	}
 }
 
+func TestValidateKubectlDepthOK(t *testing.T) {
+	doc := validDoc()
+	doc.Steps[0].Apply.WaitFor = "condition=Established"
+	doc.Steps = append(doc.Steps,
+		Step{Name: "kustomized", Apply: &ApplyOp{
+			WaitFor:   "jsonpath={.status.readyReplicas}=1",
+			Manifests: []ManifestSource{{Kustomize: "./overlays/prod"}},
+		}},
+		Step{Name: "evict", Patch: &PatchOp{
+			Target: "daemonset/aws-node", Namespace: "kube-system",
+			Patch: []byte(`{"spec":{}}`),
+		}},
+		Step{Name: "surgery", Patch: &PatchOp{
+			Target: "configmap/argocd-cm", Type: PatchJSON,
+			Patch: []byte(`[{"op":"remove","path":"/data/x"}]`),
+		}},
+		Step{Name: "phase", Wait: &WaitOp{
+			For: "jsonpath={.status.phase}=Running", On: "pods",
+			FieldSelector: "status.phase!=Succeeded",
+		}},
+	)
+	if err := Validate(doc); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -179,6 +205,87 @@ func TestValidate(t *testing.T) {
 				d.Steps[0].Wait = &WaitOp{For: "ready", On: "pods"}
 			},
 			"condition=",
+		},
+		{
+			"wait empty condition name",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Wait = &WaitOp{For: "condition=", On: "pods"}
+			},
+			"condition name is empty",
+		},
+		{
+			"wait bad jsonpath",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Wait = &WaitOp{For: "jsonpath={.status.phase", On: "pods"}
+			},
+			"closing brace",
+		},
+		{
+			"wait jsonpath parse error",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Wait = &WaitOp{For: "jsonpath={.status[}", On: "pods"}
+			},
+			"invalid jsonpath",
+		},
+		{
+			"apply waitFor delete",
+			func(d *Document) { d.Steps[0].Apply.WaitFor = "delete" },
+			"cannot be \"delete\"",
+		},
+		{
+			"apply waitFor bad grammar",
+			func(d *Document) { d.Steps[0].Apply.WaitFor = "ready" },
+			"waitFor",
+		},
+		{
+			"kustomize bare path",
+			func(d *Document) {
+				d.Steps[0].Apply.Manifests = []ManifestSource{{Kustomize: "overlays/prod"}}
+			},
+			"local path",
+		},
+		{
+			"patch bad target",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Patch = &PatchOp{Target: "aws-node", Patch: []byte(`{"a":1}`)}
+			},
+			"target must be <kind>/<name>",
+		},
+		{
+			"patch bad type",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Patch = &PatchOp{Target: "daemonset/aws-node", Type: "smart", Patch: []byte(`{"a":1}`)}
+			},
+			"type must be",
+		},
+		{
+			"patch missing body",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Patch = &PatchOp{Target: "daemonset/aws-node"}
+			},
+			"patch body is required",
+		},
+		{
+			"patch json body not a list",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Patch = &PatchOp{Target: "daemonset/aws-node", Type: "json", Patch: []byte(`{"a":1}`)}
+			},
+			"list of operations",
+		},
+		{
+			"patch merge body not a mapping",
+			func(d *Document) {
+				d.Steps[0].Apply = nil
+				d.Steps[0].Patch = &PatchOp{Target: "daemonset/aws-node", Type: "merge", Patch: []byte(`[1]`)}
+			},
+			"must be a mapping",
 		},
 		{
 			"rollout both restart and status",

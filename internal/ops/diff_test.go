@@ -164,6 +164,41 @@ func TestDiffApplyUnknownKindDegrades(t *testing.T) {
 	}
 }
 
+func TestDiffPatch(t *testing.T) {
+	e, _, _ := testExecutor(t, existingConfigMap())
+	step := patchStep("p", &spec.PatchOp{
+		Target:    "configmap/demo",
+		Namespace: "ns1",
+		Type:      spec.PatchMerge,
+		Patch:     []byte(`{"data":{"added":"new"}}`),
+	})
+	got, err := e.Diff(context.Background(), step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"--- live/configmap/demo", "+  added: new"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("diff missing %q:\n%s", want, got)
+		}
+	}
+	// No mutation assertion: the fake tracker ignores DryRun (a real API
+	// server honors DryRunAll); the e2e covers non-mutation.
+}
+
+func TestDiffPatchMissingTarget(t *testing.T) {
+	e, _, _ := testExecutor(t)
+	step := patchStep("p", &spec.PatchOp{
+		Target: "configmap/ghost", Namespace: "ns1", Patch: []byte(`{"data":{}}`),
+	})
+	got, err := e.Diff(context.Background(), step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "cannot diff configmap/ghost") {
+		t.Fatalf("want degrade note, got:\n%s", got)
+	}
+}
+
 func TestDiffStepTypesWithoutObjects(t *testing.T) {
 	e, _, _ := testExecutor(t)
 	step := deleteStep("del", &spec.DeleteOp{Resource: "pod/victim", Namespace: "ns1"})

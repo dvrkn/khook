@@ -31,6 +31,7 @@ func (e *Executor) runApply(ctx context.Context, step *spec.Step) error {
 		}
 	}
 
+	skipped := false
 	if op.SkipIfExists {
 		allExist := true
 		for _, obj := range objs {
@@ -48,16 +49,61 @@ func (e *Executor) runApply(ctx context.Context, step *spec.Step) error {
 		}
 		if allExist {
 			e.Log.Info("all resources exist, skipping apply", "step", step.Name)
-			return nil
+			skipped = true
 		}
 	}
 
-	for _, obj := range objs {
-		if err := e.applyObject(ctx, obj, op); err != nil {
-			return err
+	if !skipped {
+		for _, obj := range objs {
+			if err := e.applyObject(ctx, obj, op); err != nil {
+				return err
+			}
 		}
 	}
+	// waitFor runs even when skipIfExists short-circuited: the condition
+	// must hold whether this run created the objects or found them, so
+	// re-runs behave like first runs.
+	if op.WaitFor != "" {
+		return e.waitApplied(ctx, objs, op)
+	}
 	return nil
+}
+
+// waitApplied polls the applied objects until each meets waitFor, bounded by
+// the step context like every wait.
+func (e *Executor) waitApplied(ctx context.Context, objs []*unstructured.Unstructured, op *spec.ApplyOp) error {
+	wf, err := spec.ParseWaitFor(op.WaitFor)
+	if err != nil {
+		return fmt.Errorf("apply: waitFor: %w", err)
+	}
+	check, err := waitChecker(wf)
+	if err != nil {
+		return err
+	}
+	e.Log.Info("waiting on applied resources", "for", wf, "count", len(objs))
+	return poll(ctx, func(ctx context.Context) (bool, error) {
+		for _, obj := range objs {
+			ri, err := e.resourceClient(obj, op.Namespace)
+			if err != nil {
+				return false, err
+			}
+			live, err := ri.Get(ctx, obj.GetName(), metav1.GetOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return false, nil
+				}
+				return false, fmt.Errorf("checking %s: %w", describe(obj), err)
+			}
+			ok, err := check(live)
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
 }
 
 func (e *Executor) applyObject(ctx context.Context, obj *unstructured.Unstructured, op *spec.ApplyOp) error {

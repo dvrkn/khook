@@ -169,6 +169,40 @@ func TestPlanDeleteBySelector(t *testing.T) {
 	assertPlan(t, e.Plan(context.Background(), step), ActionDelete, "2 matching")
 }
 
+func TestPlanApplyWaitForDetail(t *testing.T) {
+	e, _, _ := testExecutor(t)
+	step := applyStep("cm", &spec.ApplyOp{
+		Namespace: "target",
+		WaitFor:   "condition=Ready",
+		Manifests: []spec.ManifestSource{{Inline: configMapYAML}},
+	})
+	assertPlan(t, e.Plan(context.Background(), step), ActionCreate, "then waits for condition=Ready")
+}
+
+func TestPlanPatchPresent(t *testing.T) {
+	e, _, _ := testExecutor(t, existingConfigMap())
+	step := patchStep("p", &spec.PatchOp{
+		Target: "configmap/demo", Namespace: "ns1", Patch: []byte(`{"data":{}}`),
+	})
+	assertPlan(t, e.Plan(context.Background(), step), ActionConfigure, "patches configmap/demo (strategic)")
+}
+
+func TestPlanPatchMissing(t *testing.T) {
+	e, _, _ := testExecutor(t)
+	step := patchStep("p", &spec.PatchOp{
+		Target: "configmap/ghost", Namespace: "ns1", Patch: []byte(`{"data":{}}`),
+	})
+	assertPlan(t, e.Plan(context.Background(), step), ActionUnknown, "must exist")
+}
+
+func TestPlanWaitJSONPathAlreadyMet(t *testing.T) {
+	pod := unstructuredPod("a", "ns1", nil, true)
+	pod.Object["status"].(map[string]any)["phase"] = "Running"
+	e, _, _ := testExecutor(t, pod)
+	step := &spec.Step{Name: "w", Wait: &spec.WaitOp{For: "jsonpath={.status.phase}=Running", On: "pods", Namespace: "ns1"}}
+	assertPlan(t, e.Plan(context.Background(), step), ActionNone, "already holds")
+}
+
 func TestPlanWaitConditionAlreadyMet(t *testing.T) {
 	e, _, _ := testExecutor(t, unstructuredPod("a", "ns1", nil, true))
 	step := &spec.Step{Name: "w", Wait: &spec.WaitOp{For: "condition=Ready", On: "pods", Namespace: "ns1"}}
