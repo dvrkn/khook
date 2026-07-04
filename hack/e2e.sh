@@ -5,10 +5,10 @@
 #   1. builds the khook binary
 #   2. creates a throwaway k3d cluster (isolated kubeconfig)
 #   3. khook validate + plan --offline on every example spec
-#   4. cluster-aware plan predicts install, then khook apply
-#      examples/simple.yaml, asserts the resources exist
-#   5. cluster-aware plan predicts upgrade, then re-applies the same spec
-#      to assert idempotency (helm upgrade path)
+#   4. cluster-aware plan predicts install and plan --diff renders the new
+#      objects, then khook apply examples/simple.yaml, asserts the resources exist
+#   5. cluster-aware plan predicts upgrade and plan --diff reports no changes,
+#      then re-applies the same spec to assert idempotency (helm upgrade path)
 #   6. khook apply hack/testdata/e2e-ops.yaml (wait / rollout / delete coverage)
 #
 # Usage:
@@ -87,11 +87,14 @@ set -e
 
 # --- apply examples/simple.yaml ---------------------------------------------
 simple_spec() {
-  "${KHOOK}" "$1" \
+  local cmd="$1"
+  shift
+  "${KHOOK}" "${cmd}" \
     --kubeconfig "${KUBECONFIG_FILE}" \
     -f "${REPO_ROOT}/examples/simple.yaml" \
     --set NAMESPACE_NAME_TO_CREATE="${DEMO_NS}" \
-    --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}"
+    --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}" \
+    "$@"
 }
 apply_simple() { simple_spec apply; }
 
@@ -99,6 +102,13 @@ log "khook plan (cluster-aware) predicts install on a fresh cluster"
 plan_out="$(simple_spec plan)"
 grep -q "plan: install" <<<"${plan_out}" || fail "cluster-aware plan should predict a helm install, got: ${plan_out}"
 k get namespace "${DEMO_NS}" >/dev/null 2>&1 && fail "plan must not mutate the cluster (namespace ${DEMO_NS} exists)"
+
+log "khook plan --diff on a fresh cluster renders the objects, mutates nothing"
+diff_out="$(simple_spec plan --diff)"
+grep -q "+++ planned/namespace/${DEMO_NS}" <<<"${diff_out}" || fail "plan --diff should show the namespace to create"
+grep -q "+++ planned/release ingress-nginx (ingress-nginx@4.8.3)" <<<"${diff_out}" || fail "plan --diff should render the chart"
+grep -q "+kind: Deployment" <<<"${diff_out}" || fail "plan --diff should show rendered chart objects as additions"
+k get namespace "${DEMO_NS}" >/dev/null 2>&1 && fail "plan --diff must not mutate the cluster (namespace ${DEMO_NS} exists)"
 
 log "khook apply examples/simple.yaml (first run: install)"
 apply_simple
@@ -119,6 +129,11 @@ revision="$(k -n "${INGRESS_NS}" get secret -l owner=helm,name=ingress-nginx \
 log "khook plan (cluster-aware) predicts upgrade after install"
 plan_out="$(simple_spec plan)"
 grep -q "plan: upgrade" <<<"${plan_out}" || fail "cluster-aware plan should predict a helm upgrade, got: ${plan_out}"
+
+log "khook plan --diff after install reports no changes"
+diff_out="$(simple_spec plan --diff)"
+grep -q "diff: no changes" <<<"${diff_out}" || fail "plan --diff on an unchanged spec should report no changes, got: ${diff_out}"
+grep -q "diff: unavailable" <<<"${diff_out}" && fail "plan --diff should assess every step, got: ${diff_out}"
 
 log "khook apply examples/simple.yaml (second run: idempotent re-apply)"
 apply_simple

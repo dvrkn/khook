@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -17,13 +19,20 @@ import (
 // planStepTimeout bounds the cluster reads for a single step's assessment.
 const planStepTimeout = 30 * time.Second
 
+// diffStepTimeout bounds one step's diff: dry-run requests plus, for helm
+// steps, downloading the chart.
+const diffStepTimeout = 2 * time.Minute
+
 func newPlanCommand(root *rootOptions) *cobra.Command {
 	flags := &specFlags{}
-	var offline bool
+	var offline, diff bool
 	cmd := &cobra.Command{
 		Use:   "plan",
 		Short: "Show what apply would do: the execution plan, checked against the cluster",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if diff && offline {
+				return validationErr(errors.New("--diff needs cluster access and cannot be combined with --offline"))
+			}
 			doc, err := flags.load()
 			if err != nil {
 				return err
@@ -66,6 +75,9 @@ func newPlanCommand(root *rootOptions) *cobra.Command {
 					} else {
 						fmt.Fprintf(out, "      plan: %s\n", a.Action)
 					}
+					if diff && diffable(a.Action) {
+						printStepDiff(cmd.Context(), out, executor, step)
+					}
 				}
 			}
 			if executor != nil {
@@ -76,7 +88,41 @@ func newPlanCommand(root *rootOptions) *cobra.Command {
 	}
 	flags.register(cmd)
 	cmd.Flags().BoolVar(&offline, "offline", false, "skip all cluster access and print the DAG-only plan")
+	cmd.Flags().BoolVar(&diff, "diff", false, "also print rendered object diffs (server-side dry-run; never mutates)")
 	return cmd
+}
+
+// diffable reports whether a predicted action has rendered objects worth
+// diffing (helm installs/upgrades and manifest applies).
+func diffable(a ops.Action) bool {
+	switch a {
+	case ops.ActionInstall, ops.ActionUpgrade, ops.ActionCreate, ops.ActionConfigure:
+		return true
+	}
+	return false
+}
+
+// printStepDiff renders one step's object diff under its plan line. Diff
+// problems degrade to a note, mirroring how Plan degrades to unknown.
+func printStepDiff(ctx context.Context, out io.Writer, executor *ops.Executor, step *spec.Step) {
+	stepCtx, cancel := context.WithTimeout(ctx, diffStepTimeout)
+	text, err := executor.Diff(stepCtx, step)
+	cancel()
+	switch {
+	case err != nil:
+		fmt.Fprintf(out, "      diff: unavailable — %v\n", err)
+	case text == "":
+		fmt.Fprintln(out, "      diff: no changes")
+	default:
+		fmt.Fprintln(out, "      diff:")
+		for _, line := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+			if line == "" {
+				fmt.Fprintln(out)
+				continue
+			}
+			fmt.Fprintf(out, "        %s\n", line)
+		}
+	}
 }
 
 // summarizePlan renders the action counts in execution-relevant order.

@@ -30,9 +30,6 @@ the [README](README.md); when an item here ships, it moves there.
 
 *Goal: the day-2 experience of running bootstraps interactively.*
 
-- [ ] **`plan --diff`**: `plan` already predicts install/upgrade/skip from
-      cluster reads; add rendered object diffs on top (kubectl server-side
-      dry-run + Helm template diff, kubectl-diff-style output).
 - [ ] **Live progress output**: interactive per-step status lines
       (pending → running → ok/failed/skipped) instead of raw log lines;
       `--output json` for the final results in CI.
@@ -113,8 +110,7 @@ without escape hatches.*
 
 ## Suggested order of attack
 
-1. Phase 1's progress output (+ `plan --diff`) — biggest day-to-day UX win
-   for the effort.
+1. Phase 1's progress output — biggest day-to-day UX win for the effort.
 2. Phase 2 driven by real specs: take `real-case.yaml`, remove every workaround it
    needed, and let that dictate which DSL features land first.
 3. Phase 3 before advertising widely — "safe to re-run, resumes on failure" is the

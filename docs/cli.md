@@ -53,6 +53,25 @@ creates, a missing values file — are reported as `unknown` with the reason,
 not treated as errors. A closing `Plan:` line totals the actions. Variables
 are resolved, so the plan shows final values.
 
+`--diff` adds kubectl-diff-style unified object diffs under each step that
+would change something (`install`/`upgrade`/`create`/`configure`):
+
+- `apply:` steps send each manifest as a **server-side dry-run** of the same
+  request `apply` would make (create, merge patch, or server-side apply), so
+  the diff includes server defaulting and admission effects. Managed fields
+  are hidden, like `kubectl diff`.
+- `helm:` steps dry-run render the chart (server dry-run: real cluster
+  capabilities, nothing stored) and diff it against the manifest of the
+  release's last revision. An install diffs against empty — all additions.
+- `delete:` / `wait:` / `rollout:` steps have no rendered objects; the plan
+  line already says what happens.
+
+An unchanged step prints `diff: no changes` — a re-run of an already-applied
+spec shows no diffs at all. A step whose diff can't be computed (chart
+download failure, kind not on the cluster yet) prints `diff: unavailable`
+with the reason, and the plan still succeeds. Like plan itself, `--diff`
+never mutates the cluster; it cannot be combined with `--offline`.
+
 `--offline` skips all cluster access and prints the DAG-only plan (no
 kubeconfig needed — useful in CI). An unreachable cluster without `--offline`
 exits 1.

@@ -43,21 +43,7 @@ func (e *Executor) runHelm(ctx context.Context, step *spec.Step) error {
 		}
 	}
 
-	settings := helmcli.New()
-	pathOpts := action.ChartPathOptions{RepoURL: op.Repo, Version: op.Version}
-	chartPath, err := pathOpts.LocateChart(op.Chart, settings)
-	if err != nil {
-		return fmt.Errorf("locating chart %q in %s: %w", op.Chart, op.Repo, err)
-	}
-	chrt, err := loader.Load(chartPath)
-	if err != nil {
-		return fmt.Errorf("loading chart %q: %w", op.Chart, err)
-	}
-	if err := checkChartInstallable(chrt); err != nil {
-		return err
-	}
-
-	values, err := e.helmValues(op)
+	chrt, values, pathOpts, err := e.loadChart(op)
 	if err != nil {
 		return err
 	}
@@ -115,6 +101,29 @@ func (e *Executor) logRelease(msg string, rel any) {
 		return
 	}
 	e.Log.Info(msg)
+}
+
+// loadChart locates and loads the step's chart and merges its values —
+// everything install, upgrade, and dry-run rendering need.
+func (e *Executor) loadChart(op *spec.HelmOp) (*chartv2.Chart, map[string]any, action.ChartPathOptions, error) {
+	settings := helmcli.New()
+	pathOpts := action.ChartPathOptions{RepoURL: op.Repo, Version: op.Version}
+	chartPath, err := pathOpts.LocateChart(op.Chart, settings)
+	if err != nil {
+		return nil, nil, pathOpts, fmt.Errorf("locating chart %q in %s: %w", op.Chart, op.Repo, err)
+	}
+	chrt, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, nil, pathOpts, fmt.Errorf("loading chart %q: %w", op.Chart, err)
+	}
+	if err := checkChartInstallable(chrt); err != nil {
+		return nil, nil, pathOpts, err
+	}
+	values, err := e.helmValues(op)
+	if err != nil {
+		return nil, nil, pathOpts, err
+	}
+	return chrt, values, pathOpts, nil
 }
 
 func (e *Executor) helmConfig(namespace string) (*action.Configuration, error) {
