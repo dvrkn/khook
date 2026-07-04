@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/google/cel-go v0.28.1
+	github.com/google/cel-go v0.29.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
