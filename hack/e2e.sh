@@ -4,9 +4,11 @@
 # What it does:
 #   1. builds the khook binary
 #   2. creates a throwaway k3d cluster (isolated kubeconfig)
-#   3. khook validate + plan on every example spec
-#   4. khook apply examples/simple.yaml, asserts the resources exist
-#   5. re-applies the same spec to assert idempotency (helm upgrade path)
+#   3. khook validate + plan --offline on every example spec
+#   4. cluster-aware plan predicts install, then khook apply
+#      examples/simple.yaml, asserts the resources exist
+#   5. cluster-aware plan predicts upgrade, then re-applies the same spec
+#      to assert idempotency (helm upgrade path)
 #   6. khook apply hack/testdata/e2e-ops.yaml (wait / rollout / delete coverage)
 #
 # Usage:
@@ -63,8 +65,8 @@ k3d cluster create "${CLUSTER_NAME}" \
 k3d kubeconfig get "${CLUSTER_NAME}" > "${KUBECONFIG_FILE}"
 k wait --for=condition=Ready nodes --all --timeout=120s >/dev/null
 
-# --- validate / plan on every example (no cluster access needed) ------------
-log "khook validate + plan on all examples"
+# --- validate / plan --offline on every example (no cluster access) ---------
+log "khook validate + plan --offline on all examples"
 EXAMPLE_VARS=(
   --set NAMESPACE_NAME_TO_CREATE="${DEMO_NS}"
   --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}"
@@ -73,7 +75,7 @@ EXAMPLE_VARS=(
 for spec in "${REPO_ROOT}"/examples/*.yaml; do
   [[ "${spec}" == *lambda* ]] && continue
   "${KHOOK}" validate -f "${spec}" "${EXAMPLE_VARS[@]}" >/dev/null
-  "${KHOOK}" plan -f "${spec}" "${EXAMPLE_VARS[@]}" >/dev/null
+  "${KHOOK}" plan --offline -f "${spec}" "${EXAMPLE_VARS[@]}" >/dev/null
 done
 
 # validation failures must exit 2
@@ -84,13 +86,19 @@ set -e
 [[ ${rc} -eq 2 ]] || fail "validate with missing variables should exit 2, got ${rc}"
 
 # --- apply examples/simple.yaml ---------------------------------------------
-apply_simple() {
-  "${KHOOK}" apply \
+simple_spec() {
+  "${KHOOK}" "$1" \
     --kubeconfig "${KUBECONFIG_FILE}" \
     -f "${REPO_ROOT}/examples/simple.yaml" \
     --set NAMESPACE_NAME_TO_CREATE="${DEMO_NS}" \
     --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}"
 }
+apply_simple() { simple_spec apply; }
+
+log "khook plan (cluster-aware) predicts install on a fresh cluster"
+plan_out="$(simple_spec plan)"
+grep -q "plan: install" <<<"${plan_out}" || fail "cluster-aware plan should predict a helm install, got: ${plan_out}"
+k get namespace "${DEMO_NS}" >/dev/null 2>&1 && fail "plan must not mutate the cluster (namespace ${DEMO_NS} exists)"
 
 log "khook apply examples/simple.yaml (first run: install)"
 apply_simple
@@ -107,6 +115,10 @@ svc_type="$(k -n "${INGRESS_NS}" get svc ingress-nginx-controller -o jsonpath='{
 revision="$(k -n "${INGRESS_NS}" get secret -l owner=helm,name=ingress-nginx \
   -o jsonpath='{.items[*].metadata.labels.version}' | tr ' ' '\n' | sort -n | tail -1)"
 [[ "${revision}" == "1" ]] || fail "expected helm revision 1 after install, got '${revision}'"
+
+log "khook plan (cluster-aware) predicts upgrade after install"
+plan_out="$(simple_spec plan)"
+grep -q "plan: upgrade" <<<"${plan_out}" || fail "cluster-aware plan should predict a helm upgrade, got: ${plan_out}"
 
 log "khook apply examples/simple.yaml (second run: idempotent re-apply)"
 apply_simple

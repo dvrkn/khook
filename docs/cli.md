@@ -36,9 +36,26 @@ detail — the error for failures, the reason for skips).
 
 ### `khook plan -f spec.yaml`
 
-Prints the execution plan — levels, step types, one-line action summaries,
-`needs` edges — without touching the cluster. Variables are resolved, so the
-plan shows final values.
+Shows what `apply` would do. Prints the execution plan — levels, step types,
+one-line action summaries, `needs` edges — and checks every step against the
+live cluster (reads only; plan never mutates anything):
+
+| Step type | Predicted action |
+|---|---|
+| `helm:` | `install` (no release history), `upgrade` (shows current revision, chart version, status → target chart), or `skip` (`skipIfInstalled`) |
+| `apply:` | `create` / `configure`, listing which objects are new vs existing, or `skip` (`skipIfExists`) |
+| `delete:` | `delete` (named object or selector match count) or `no-op` (already absent) |
+| `wait:` | `no-op` when the condition already holds, `wait` otherwise (shows how many objects currently match) |
+| `rollout:` | `restart`, `no-op` (rollout already complete), or `wait` |
+
+Steps that can't be assessed yet — e.g. a CRD or namespace an earlier step
+creates, a missing values file — are reported as `unknown` with the reason,
+not treated as errors. A closing `Plan:` line totals the actions. Variables
+are resolved, so the plan shows final values.
+
+`--offline` skips all cluster access and prints the DAG-only plan (no
+kubeconfig needed — useful in CI). An unreachable cluster without `--offline`
+exits 1.
 
 ### `khook validate -f spec.yaml`
 

@@ -116,7 +116,7 @@ bootstrap (CNI swap, external-secrets, ArgoCD handoff).
 | Command | What it does |
 |---|---|
 | `khook apply -f spec.yaml` | execute the spec against the cluster |
-| `khook plan -f spec.yaml` | print the DAG execution plan, no cluster access |
+| `khook plan -f spec.yaml` | show what apply would do — install vs upgrade vs skip, checked against the cluster (`--offline` for the DAG-only plan) |
 | `khook validate -f spec.yaml` | parse + validate (exit 2 on problems) |
 | `khook schema` | print the spec's JSON Schema |
 | `khook version` | print version info |

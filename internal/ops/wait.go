@@ -21,15 +21,7 @@ func (e *Executor) runWait(ctx context.Context, step *spec.Step) error {
 		return err
 	}
 
-	base := e.Clients.Dynamic.Resource(resolved.GVR)
-	var ri dynamic.ResourceInterface = base
-	if resolved.Namespaced && !op.AllNamespaces {
-		ns := op.Namespace
-		if ns == "" {
-			ns = "default"
-		}
-		ri = base.Namespace(ns)
-	}
+	ri := e.scopedClient(resolved, op.Namespace, op.AllNamespaces)
 
 	if op.For == "delete" {
 		return e.waitDeleted(ctx, ri, op, name, hasName)

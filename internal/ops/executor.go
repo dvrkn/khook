@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 
 	"github.com/dvrkn/khook/internal/kube"
 	"github.com/dvrkn/khook/internal/spec"
@@ -48,6 +49,20 @@ func (e *Executor) Execute(ctx context.Context, step *spec.Step) error {
 		return e.runRollout(ctx, step)
 	}
 	return fmt.Errorf("step %q has no action", step.Name)
+}
+
+// scopedClient returns a resource client scoped to the given namespace
+// ("default" when empty), unless the resource is cluster-scoped or the op
+// spans all namespaces.
+func (e *Executor) scopedClient(resolved *kube.ResolvedResource, namespace string, allNamespaces bool) dynamic.ResourceInterface {
+	base := e.Clients.Dynamic.Resource(resolved.GVR)
+	if !resolved.Namespaced || allNamespaces {
+		return base
+	}
+	if namespace == "" {
+		namespace = "default"
+	}
+	return base.Namespace(namespace)
 }
 
 // ensureNamespace creates a namespace if it does not exist.

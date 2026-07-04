@@ -45,14 +45,7 @@ func (e *Executor) deleteByResource(ctx context.Context, op *spec.DeleteOp) erro
 	}
 
 	base := e.Clients.Dynamic.Resource(resolved.GVR)
-	var ri dynamic.ResourceInterface = base
-	if resolved.Namespaced && !op.AllNamespaces {
-		ns := op.Namespace
-		if ns == "" {
-			ns = "default"
-		}
-		ri = base.Namespace(ns)
-	}
+	ri := e.scopedClient(resolved, op.Namespace, op.AllNamespaces)
 
 	if hasName {
 		return e.deleteAndWait(ctx, ri, name, op.Resource, op.IgnoreNotFoundOrDefault())
