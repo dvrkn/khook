@@ -1,0 +1,123 @@
+apiVersion: khook.dvrkn.com/v1
+kind: Khook
+metadata:
+  name: localenv
+
+# Local development environment (k3d/kind): optional Cilium CNI, Argo CD at
+# http://argocd.localhost, and kube-prometheus-stack with Grafana at
+# http://grafana.localhost. Ingress is served by k3d's bundled Traefik.
+#
+#   k3d cluster create localenv -p "80:80@loadbalancer"
+#   khook apply -f examples/localenv.yaml
+#
+# Cilium is off by default (k3d/kind ship a working CNI). To replace it:
+#
+#   k3d cluster create localenv -p "80:80@loadbalancer" \
+#     --k3s-arg "--flannel-backend=none@server:*" \
+#     --k3s-arg "--disable-network-policy@server:*"
+#   khook apply -f examples/localenv.yaml --set INSTALL_CILIUM=true
+
+
+defaults:
+  timeout: 5m
+  onError: fail
+
+steps:
+  # Optional CNI — skipped unless INSTALL_CILIUM=true. A step excluded by
+  # when: still satisfies needs, so the rest of the graph runs either way.
+  - name: cilium
+    when: vars.get("INSTALL_CILIUM", "false") == "true"
+    helm:
+      chart: cilium
+      repo: https://helm.cilium.io/
+      version: 1.18.4
+      namespace: kube-system
+      skipIfInstalled: true
+      atomic: true
+      values:
+        operator:
+          replicas: 1  # single-node local cluster
+
+  - name: wait-nodes-ready
+    needs: [cilium]
+    wait:
+      for: condition=Ready
+      on: nodes
+
+  - name: argocd
+    needs: [wait-nodes-ready]
+    helm:
+      chart: argo-cd
+      repo: https://argoproj.github.io/argo-helm
+      version: 9.1.4
+      namespace: argocd
+      createNamespace: true
+      skipIfInstalled: true
+      atomic: true
+      values:
+        configs:
+          params:
+            server.insecure: true  # TLS terminates at the ingress
+
+  # Release name = step name, so the Grafana service is prometheus-grafana.
+  # Grafana login: admin / prom-operator (chart default).
+  - name: prometheus
+    needs: [wait-nodes-ready]
+    timeout: 10m
+    helm:
+      chart: kube-prometheus-stack
+      repo: https://prometheus-community.github.io/helm-charts
+      version: 87.5.1
+      namespace: monitoring
+      createNamespace: true
+      skipIfInstalled: true
+      atomic: true
+
+  - name: ingresses
+    needs: [argocd, prometheus]
+    apply:
+      manifests:
+        - inline: |
+            apiVersion: networking.k8s.io/v1
+            kind: Ingress
+            metadata:
+              name: argocd-server
+              namespace: argocd
+            spec:
+              ingressClassName: traefik
+              rules:
+                - host: argocd.localhost
+                  http:
+                    paths:
+                      - path: /
+                        pathType: Prefix
+                        backend:
+                          service:
+                            name: argocd-server
+                            port:
+                              number: 80
+        - inline: |
+            apiVersion: networking.k8s.io/v1
+            kind: Ingress
+            metadata:
+              name: grafana
+              namespace: monitoring
+            spec:
+              ingressClassName: traefik
+              rules:
+                - host: grafana.localhost
+                  http:
+                    paths:
+                      - path: /
+                        pathType: Prefix
+                        backend:
+                          service:
+                            name: prometheus-grafana
+                            port:
+                              number: 80
+
+  - name: wait-ready
+    needs: [ingresses]
+    rollout:
+      status: deployment/prometheus-grafana
+      namespace: monitoring
