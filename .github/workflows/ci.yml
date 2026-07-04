@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One in-flight run per ref; newer pushes cancel older ones.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # Pin to the version used locally. The official installer is
+      # config-version-agnostic, so no golangci-lint-action major to track.
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" v2.12.2
+      - name: Lint
+        run: golangci-lint run --timeout=5m
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # schema_test.go fails if docs/schema/v1/khook.json drifts from the types,
+      # so `go test ./...` is also the schema-drift guard.
+      - name: Test
+        run: go test ./...
+      # Ensure the static, stripped, version-stamped release build still links.
+      - name: Release build smoke
+        run: make build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        run: curl -sSfL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v5
+      # Docker is preinstalled on ubuntu-latest; k3d runs the cluster on it.
+      - name: E2E (k3d)
+        run: ./tests/e2e.sh

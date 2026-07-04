@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,  goarch: amd64 }
+          - { goos: linux,  goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # tags/history for version stamping
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build & checksum
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Cross-compile the static, stripped, version-stamped release binary.
+          # VERSION is the tag (e.g. v1.2.3); COMMIT/DATE default from the Makefile.
+          make build
+          mkdir -p dist
+          name="khook_${VERSION}_${GOOS}_${GOARCH}"
+          mv bin/khook "dist/${name}"
+          ( cd dist && sha256sum "${name}" > "${name}.sha256" )
+      - uses: actions/upload-artifact@v7
+        with:
+          name: khook-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and upload assets
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Aggregate checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          cat *.sha256 > checksums.txt
+          rm -f *.sha256
+          echo "Release assets:"; ls -lh
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/khook_*
+            dist/checksums.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true
