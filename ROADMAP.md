@@ -31,8 +31,15 @@ the [README](README.md); when an item here ships, it moves there.
 *Goal: cover the real bootstrap cases (`examples/real-case.yaml` and beyond)
 without escape hatches.*
 
-- [ ] **apiVersion `v1` freeze**: publish the JSON schema (raw GitHub URL + JSON
-      Schema Store) so editors autocomplete via `# yaml-language-server`.
+- [ ] **Publish the v1 JSON schema**: the schema is generated, committed
+      (`schema/v1/khook.json`), drift-tested, and wired into the examples —
+      what remains is making its URLs live once the repo is public:
+      - [ ] serve `https://khook.io/schema/v1/khook.json` (the schema's `$id`)
+            — GitHub Pages on the repo root does it, the committed path
+            already matches — or re-point the `$id` at the raw GitHub URL.
+      - [ ] submit to the [JSON Schema Store](https://github.com/SchemaStore/schemastore)
+            with a `fileMatch` pattern, which means picking a spec filename
+            convention (`khook.yaml` / `*.khook.yaml`) first.
 
 ## Phase 2 — Idempotency, state & resume (make re-runs first-class)
 

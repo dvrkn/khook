@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../schema/v1/khook.json
 # Every helm chart-source form in one spec: oci:// references (with inline
 # credentials or an auth: block), local chart paths, values from a URL, and
 # release uninstall via delete:.

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../schema/v1/khook.json
 # The kubectl-depth features in one spec: apply+wait in one step (waitFor),
 # jsonpath waits, in-place patching (strategic/merge/json), and kustomize
 # manifest sources.

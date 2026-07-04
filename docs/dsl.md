@@ -5,6 +5,18 @@ Normative spec for `apiVersion: khook.io/v1`, `kind: Khook`.
 disagree, this document wins. Anything marked **(roadmap)** is not part of v1
 core — see the command coverage matrix at the bottom and `roadmap.md`.
 
+A machine-readable JSON Schema of this spec is committed at
+[`schema/v1/khook.json`](../schema/v1/khook.json) (also printed by
+`khook schema`). For editor validation and autocomplete, point
+yaml-language-server at it from the first line of a spec:
+
+```yaml
+# yaml-language-server: $schema=<path or URL to khook.json>
+```
+
+The examples use a repo-relative path; once the schema is published, the
+canonical URL is `https://khook.io/schema/v1/khook.json` (the schema's `$id`).
+
 ## Document envelope
 
 ```yaml

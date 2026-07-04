@@ -116,7 +116,17 @@ cluster access. Prints all problems at once, not just the first.
 ### `khook schema`
 
 Prints the JSON Schema for the spec (draft 2020-12), including the
-exactly-one-action-key constraint on steps.
+constraints the type reflection alone can't express: fixed
+`apiVersion`/`kind`, exactly one action key per step, exactly one source key
+per manifest/values entry, exactly one of `restart`/`status` (rollout) and
+`manifests`/`resource`/`release` (delete), and the `onError`/patch-`type`
+value sets.
+
+The same schema is committed at [`schema/v1/khook.json`](../schema/v1/khook.json)
+for editors (`# yaml-language-server: $schema=...`); `hack/gen-schema.sh`
+regenerates it, and a unit test fails when it drifts from the spec types.
+The schema validates specs *as authored* — `${VAR}` references live inside
+string values and pass through untouched.
 
 ### `khook version`
 
