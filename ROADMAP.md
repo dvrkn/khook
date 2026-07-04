@@ -30,25 +30,13 @@ the [README](README.md); when an item here ships, it moves there.
 
 *Goal: trivially runnable from every place a cluster gets created.*
 
-- [ ] **CI**: GitHub Actions — lint (golangci-lint), unit tests, the k3d E2E
-      (`tests/e2e.sh`), build matrix (linux/darwin, amd64/arm64).
-- [ ] **Release channels**: goreleaser → GitHub Releases (static binaries),
-      Homebrew tap, multi-arch container image (GHCR).
-- [ ] **Publish the v1 JSON schema**: the schema is generated, committed
-      (`docs/schema/v1/khook.json`), drift-tested, and wired into the examples —
-      what remains is making its URLs live once the repo is public:
-      - [ ] serve `https://khook.io/schema/v1/khook.json` (the schema's `$id`)
-            — the website (`docs/`, Jekyll) already ships the schema at that
-            path (`make schema` writes it there directly, the site's
-            single source of truth); what remains is enabling GitHub Pages
-            (main branch, `/docs` folder) with the `khook.io` custom domain.
-      - [ ] submit to the [JSON Schema Store](https://github.com/SchemaStore/schemastore)
-            with a `fileMatch` pattern, which means picking a spec filename
-            convention (`khook.yaml` / `*.khook.yaml`) first.
-- [ ] **Terraform**: re-establish the Lambda path v0 proved (invocation contract
-      sketched in `examples/lambda/example-payload.json`) as a small Terraform
-      module wrapping the Lambda — no `null_resource`/`local-exec` — plus docs
-      for EKS access entries / IAM.
+- [ ] **Release channels beyond the binaries**: a Homebrew tap and a multi-arch
+      container image (GHCR). Tagged `v*` release binaries already ship via
+      `.github/workflows/release.yml`.
+- [ ] **Submit the v1 schema to the [JSON Schema Store](https://github.com/SchemaStore/schemastore)**
+      with a `fileMatch` pattern — which means picking a spec filename
+      convention (`khook.yaml` / `*.khook.yaml`) first. The schema itself is
+      already served live at its `$id`, `https://khook.io/schema/v1/khook.json`.
 - [ ] **Broader auth**: GKE and AKS token plugins (behind build tags to keep the
       binary lean), generic OIDC/exec-plugin support, in-cluster ServiceAccount
       auth (run as a Job inside the cluster it bootstraps).
@@ -95,13 +83,6 @@ the [README](README.md); when an item here ships, it moves there.
 - **Not a data bus.** Steps do not pass values through khook (no `${outputs.*}`, no job output capture): late-bound data would make consumer steps unplannable and re-substitution would break the load-time model. In-cluster, a `job` writes a Secret/ConfigMap and consumers reference it *by name* (`secretKeyRef`, `existingSecret`-style chart values) — the name is static and plannable, the value flows through the API server. Out-of-cluster values are variables (env-first); cross-resource wiring after bootstrap belongs to the operators khook hands off to.
 - **Not a secrets fetcher.** khook consumes variables (`KHOOK_VAR_*` / `KHOOK_SECRET_*`, `--set`, `--var-file`); it never reaches into SSM/Secrets Manager/Vault itself — whatever runs khook (shell, CI, Terraform, the Lambda invoker) resolves values, since it always has better credential context. Keeps cloud SDKs out of the binary. In-cluster, the External Secrets pattern owns secrets end-to-end.
 - **No templating language over the document** (no embedded Go templates/Jinja — a `{{ }}` pass would fight the template syntax specs embed as data in Argo/Helm manifests). The sanctioned form is sprig pipelines *inside* `${NAME|...}` references (hermetic function set; see `docs/dsl.md`): only the author-written pipeline is templated, values stay data, the document is never template-parsed. Complexity beyond that belongs in Helm values or a `job` op.
-
-## Suggested order of attack
-
-1. CI first (Phase 1) — it is cheap and guards everything else. With
-   change detection shipped, "safe to re-run, resumes on failure" — the core
-   promise of a bootstrapper — is delivered; nothing else blocks advertising.
-2. The rest of Phases 1–2 as adoption demands.
 
 ## Open questions
 
