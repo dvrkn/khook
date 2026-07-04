@@ -8,8 +8,8 @@ description: >-
   cluster from "API server answers" to "workloads can be deployed" — a
   declarative, idempotent DAG of helm, apply, wait, and friends. No kubectl,
   no helm binary, no bash.
-url: "https://khook.io"
-baseurl: ""
+url: "https://dvrkn.github.io"
+baseurl: "/khook"
 lang: en
 
 repo_url: https://github.com/dvrkn/khook
