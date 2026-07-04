@@ -1,0 +1,86 @@
+# E2E coverage for the step types examples/simple.yaml does not exercise:
+# wait, rollout (restart + status), and delete (by selector and kind/name).
+apiVersion: khook.dvrkn.com/v1
+kind: Khook
+metadata:
+  name: e2e-ops
+
+defaults:
+  timeout: 3m
+
+steps:
+  - name: workload
+    apply:
+      namespace: ${OPS_NAMESPACE}
+      createNamespace: true
+      manifests:
+        - inline: |
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: echo
+              namespace: ${OPS_NAMESPACE}
+              labels:
+                app: echo
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: echo
+              template:
+                metadata:
+                  labels:
+                    app: echo
+                spec:
+                  containers:
+                  - name: echo
+                    image: rancher/mirrored-pause:3.6
+        - inline: |
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: doomed
+              namespace: ${OPS_NAMESPACE}
+              labels:
+                purpose: delete-me
+
+  - name: rollout-status
+    needs: [workload]
+    rollout:
+      status: deployment/echo
+      namespace: ${OPS_NAMESPACE}
+
+  - name: rollout-restart
+    needs: [rollout-status]
+    rollout:
+      restart: deployment/echo
+      namespace: ${OPS_NAMESPACE}
+
+  - name: pods-ready
+    needs: [rollout-restart]
+    wait:
+      for: condition=Ready
+      on: pods
+      namespace: ${OPS_NAMESPACE}
+      selector: app=echo
+
+  - name: delete-configmap
+    needs: [workload]
+    delete:
+      resource: configmaps
+      namespace: ${OPS_NAMESPACE}
+      selector: purpose=delete-me
+
+  - name: delete-workload
+    needs: [pods-ready, delete-configmap]
+    delete:
+      resource: deployment/echo
+      namespace: ${OPS_NAMESPACE}
+
+  - name: pods-gone
+    needs: [delete-workload]
+    wait:
+      for: delete
+      on: pods
+      namespace: ${OPS_NAMESPACE}
+      selector: app=echo

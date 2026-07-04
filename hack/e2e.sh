@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# khook E2E smoke test against a local k3d cluster.
+#
+# What it does:
+#   1. builds the khook binary
+#   2. creates a throwaway k3d cluster (isolated kubeconfig)
+#   3. khook validate + plan on every example spec
+#   4. khook apply examples/simple.yaml, asserts the resources exist
+#   5. re-applies the same spec to assert idempotency (helm upgrade path)
+#   6. khook apply hack/testdata/e2e-ops.yaml (wait / rollout / delete coverage)
+#
+# Usage:
+#   ./hack/e2e.sh                 # full run, cluster deleted at the end
+#   KEEP_CLUSTER=1 ./hack/e2e.sh  # keep the cluster for debugging
+#   CLUSTER_NAME=x ./hack/e2e.sh  # custom cluster name
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLUSTER_NAME="${CLUSTER_NAME:-khook-e2e}"
+KEEP_CLUSTER="${KEEP_CLUSTER:-0}"
+KHOOK="${REPO_ROOT}/bin/khook"
+KUBECONFIG_FILE="$(mktemp -t khook-e2e-kubeconfig.XXXXXX)"
+
+INGRESS_NS="e2e-ingress"
+DEMO_NS="e2e-demo"
+OPS_NS="e2e-ops"
+
+log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
+fail() { printf '\033[1;31mFAIL: %s\033[0m\n' "$*" >&2; exit 1; }
+
+k() { kubectl --kubeconfig "${KUBECONFIG_FILE}" "$@"; }
+
+cleanup() {
+  local code=$?
+  if [[ "${KEEP_CLUSTER}" == "1" ]]; then
+    log "keeping cluster ${CLUSTER_NAME} (kubeconfig: ${KUBECONFIG_FILE})"
+  else
+    log "deleting cluster ${CLUSTER_NAME}"
+    k3d cluster delete "${CLUSTER_NAME}" >/dev/null 2>&1 || true
+    rm -f "${KUBECONFIG_FILE}"
+  fi
+  if [[ ${code} -eq 0 ]]; then
+    printf '\n\033[1;32mE2E PASSED\033[0m\n'
+  else
+    printf '\n\033[1;31mE2E FAILED (exit %d)\033[0m\n' "${code}"
+  fi
+  exit "${code}"
+}
+trap cleanup EXIT
+
+command -v k3d >/dev/null     || fail "k3d is required"
+command -v kubectl >/dev/null || fail "kubectl is required"
+
+log "building khook"
+(cd "${REPO_ROOT}" && go build -o "${KHOOK}" ./cmd/khook)
+
+log "creating k3d cluster ${CLUSTER_NAME}"
+k3d cluster delete "${CLUSTER_NAME}" >/dev/null 2>&1 || true
+k3d cluster create "${CLUSTER_NAME}" \
+  --kubeconfig-update-default=false \
+  --kubeconfig-switch-context=false \
+  --wait --timeout 120s >/dev/null
+k3d kubeconfig get "${CLUSTER_NAME}" > "${KUBECONFIG_FILE}"
+k wait --for=condition=Ready nodes --all --timeout=120s >/dev/null
+
+# --- validate / plan on every example (no cluster access needed) ------------
+log "khook validate + plan on all examples"
+EXAMPLE_VARS=(
+  --set NAMESPACE_NAME_TO_CREATE="${DEMO_NS}"
+  --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}"
+  --set NAMESPACE=e2e-vars --set APP_NAME=e2e-app
+)
+for spec in "${REPO_ROOT}"/examples/*.yaml; do
+  [[ "${spec}" == *lambda* ]] && continue
+  "${KHOOK}" validate -f "${spec}" "${EXAMPLE_VARS[@]}" >/dev/null
+  "${KHOOK}" plan -f "${spec}" "${EXAMPLE_VARS[@]}" >/dev/null
+done
+
+# validation failures must exit 2
+set +e
+"${KHOOK}" validate -f "${REPO_ROOT}/examples/simple.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+[[ ${rc} -eq 2 ]] || fail "validate with missing variables should exit 2, got ${rc}"
+
+# --- apply examples/simple.yaml ---------------------------------------------
+apply_simple() {
+  "${KHOOK}" apply \
+    --kubeconfig "${KUBECONFIG_FILE}" \
+    -f "${REPO_ROOT}/examples/simple.yaml" \
+    --set NAMESPACE_NAME_TO_CREATE="${DEMO_NS}" \
+    --set NAMESPACE_NAME_FOR_INGRESS="${INGRESS_NS}"
+}
+
+log "khook apply examples/simple.yaml (first run: install)"
+apply_simple
+
+k get namespace "${DEMO_NS}" >/dev/null    || fail "namespace ${DEMO_NS} was not created"
+k get namespace "${INGRESS_NS}" >/dev/null || fail "namespace ${INGRESS_NS} was not created (helm createNamespace)"
+
+log "waiting for ingress-nginx to become Available"
+k -n "${INGRESS_NS}" wait --for=condition=Available deployment/ingress-nginx-controller --timeout=300s >/dev/null
+
+svc_type="$(k -n "${INGRESS_NS}" get svc ingress-nginx-controller -o jsonpath='{.spec.type}')"
+[[ "${svc_type}" == "ClusterIP" ]] || fail "inline helm values not applied: service type ${svc_type}, want ClusterIP"
+
+revision="$(k -n "${INGRESS_NS}" get secret -l owner=helm,name=ingress-nginx \
+  -o jsonpath='{.items[*].metadata.labels.version}' | tr ' ' '\n' | sort -n | tail -1)"
+[[ "${revision}" == "1" ]] || fail "expected helm revision 1 after install, got '${revision}'"
+
+log "khook apply examples/simple.yaml (second run: idempotent re-apply)"
+apply_simple
+
+revision="$(k -n "${INGRESS_NS}" get secret -l owner=helm,name=ingress-nginx \
+  -o jsonpath='{.items[*].metadata.labels.version}' | tr ' ' '\n' | sort -n | tail -1)"
+[[ "${revision}" == "2" ]] || fail "expected helm revision 2 after re-apply (upgrade), got '${revision}'"
+
+status="$(k -n "${INGRESS_NS}" get secret "sh.helm.release.v1.ingress-nginx.v${revision}" \
+  -o jsonpath='{.metadata.labels.status}')"
+[[ "${status}" == "deployed" ]] || fail "helm release status after re-apply: ${status}, want deployed"
+
+# --- wait / rollout / delete coverage ----------------------------------------
+log "khook apply hack/testdata/e2e-ops.yaml (wait/rollout/delete)"
+"${KHOOK}" apply \
+  --kubeconfig "${KUBECONFIG_FILE}" \
+  -f "${REPO_ROOT}/hack/testdata/e2e-ops.yaml" \
+  --set OPS_NAMESPACE="${OPS_NS}"
+
+k -n "${OPS_NS}" get configmap doomed >/dev/null 2>&1 && fail "configmap doomed should have been deleted"
+k -n "${OPS_NS}" get deployment echo >/dev/null 2>&1 && fail "deployment echo should have been deleted"
+
+# --- failure semantics: a failing step must exit 1 and skip dependents -------
+log "asserting failure exit code"
+set +e
+"${KHOOK}" apply --kubeconfig "${KUBECONFIG_FILE}" \
+  -f /dev/stdin --set _unused=1 <<'EOF' >/dev/null 2>&1
+apiVersion: khook.dvrkn.com/v1
+kind: Khook
+metadata:
+  name: must-fail
+defaults:
+  timeout: 20s
+steps:
+  - name: bad-wait
+    wait:
+      for: condition=Ready
+      on: pods
+      namespace: does-not-exist-ns
+      selector: app=nothing
+EOF
+rc=$?
+set -e
+[[ ${rc} -eq 1 ]] || fail "failing apply should exit 1, got ${rc}"

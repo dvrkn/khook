@@ -1,0 +1,14 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # Human-facing output to stdout/stderr; a failed write there is not
+        # actionable.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*text/tabwriter.Writer).Flush
+        # Idiomatic `defer resp.Body.Close()`.
+        - (io.ReadCloser).Close
