@@ -84,6 +84,29 @@ without escape hatches.*
 
 ---
 
+## Maybe someday
+
+- **Raw-HTTP Kubernetes/Helm client (drop client-go + Helm SDK)** — measured
+  2026-07-03: the release binary is ~61 MB, and ~40 MB of that (two thirds) is
+  the typed `k8s.io/client-go` clientset, all of `k8s.io/api`, and the Helm
+  SDK's transitive graph. A probe binary keeping everything else khook needs
+  (cobra, CEL, kustomize, sprig/`text/template`, YAML, JSON Schema, TLS/HTTP)
+  came out at 20 MB (16 MB without kustomize); a raw-HTTP implementation would
+  realistically land at ~22–24 MB. The saving is structural: the typed
+  clientset links every resource type of every API group, and
+  `text/template` (Helm's render engine) calls `reflect.MethodByName`, which
+  disables linker method pruning — so none of it dead-code-eliminates. The
+  kubectl-ish half is genuinely simple over raw HTTP (server-side apply,
+  watch streaming, kubeconfig + exec-credential auth); the blocker is Helm:
+  it would mean reimplementing chart dependency resolution, hooks,
+  release-storage records, upgrade/rollback semantics — weeks of work plus a
+  permanent compatibility-tracking burden. And it is all-or-nothing: going
+  raw-HTTP only for kubectl-ish steps saves almost nothing while the Helm SDK
+  still links the typed clientset. Revisit only if binary size becomes a real
+  adoption problem (e.g. Lambda package limits). Build-flag slimming already
+  shipped (`make build`, 97 → 61 MB); overlay-stubbing Helm's WASM/SQL paths
+  (~3 MB more) and UPX were evaluated and rejected — see AGENTS.md.
+
 ## Explicit non-goals
 
 - **Not a GitOps engine.** No watch loops, no drift reconciliation — install Argo/Flux and hand off.
