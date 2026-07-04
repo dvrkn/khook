@@ -88,7 +88,12 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 
 			executor := ops.NewExecutor(clients, root.log)
 			runner := engine.NewRunner(doc.Defaults, executor.Execute, root.log)
-			runner.SkipCompleted = skipCompleted
+			if len(skipCompleted) > 0 {
+				runner.Skip = make(map[string]string, len(skipCompleted))
+				for name := range skipCompleted {
+					runner.Skip[name] = engine.SkipReasonPriorRun
+				}
+			}
 
 			stdout := root.redact.Wrap(os.Stdout)
 			var prog *progress

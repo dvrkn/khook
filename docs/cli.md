@@ -7,7 +7,7 @@ description: khook commands, flags, variable precedence, exit codes, and executi
 <!-- {% raw %} — body is Liquid-free on the website build; invisible on GitHub -->
 # khook CLI reference
 
-One binary, six subcommands. Cluster access follows standard kubeconfig
+One binary, seven subcommands. Cluster access follows standard kubeconfig
 loading rules (`KUBECONFIG`, `~/.kube/config`).
 
 ## Global flags
@@ -19,7 +19,7 @@ loading rules (`KUBECONFIG`, `~/.kube/config`).
 | `--log-level` | `info` | `debug`, `info`, `warn`, `error` (`debug` includes Helm SDK output) |
 | `--log-format` | `text` | `text` or `json`; logs go to stderr |
 
-## Spec flags (`apply`, `plan`, `validate`, `graph`, `status`)
+## Spec flags (`apply`, `destroy`, `plan`, `validate`, `graph`, `status`)
 
 | Flag | Notes |
 |---|---|
@@ -77,6 +77,43 @@ front), skips steps a previous run completed **whose inputs are unchanged**
 every step outcome as it happens, and stamps the final run status. A run
 whose steps all succeed but whose record cannot be written **exits 1** —
 opting into state makes the journal part of the contract.
+
+### `khook destroy -f spec.yaml`
+
+Tears down what the spec created, walking the DAG in **reverse dependency
+order**: each step's resources are removed before the resources of the steps
+it `needs`, and independent branches tear down in parallel. Built for dev
+clusters and CI environments; output modes (live progress, summary table,
+`-o json`), retries, timeouts, and `onError` semantics are the same as
+`apply`.
+
+What each step type tears down:
+
+| Step type | Teardown |
+|---|---|
+| `helm:` | uninstalls the release (waits until its resources are gone) |
+| `apply:` | deletes the objects its manifests describe, last manifest first, and waits until each is gone |
+| `job:` | deletes the step's Job and its pods (refuses a Job not managed by khook) |
+| `delete:` / `patch:` | skipped — khook does not restore deleted resources or revert patches |
+| `wait:` / `rollout:` | skipped — nothing was created |
+
+Semantics worth knowing:
+
+- **Idempotent**: resources that are already gone count as success, so a
+  destroy can be re-run after a partial failure and finishes the job.
+- A step whose `when:` condition is false is skipped, exactly as in `apply`
+  (pass the same `--set`/env so the same steps are in play). Skipped steps
+  of every kind still satisfy the teardown ordering.
+- **Namespaces created via `createNamespace: true` are left in place** — they
+  may hold resources khook did not create. Delete the cluster (dev) or the
+  namespaces themselves if you want them gone.
+- When the spec enables [`state:`](dsl.md#state--the-run-state-record), a
+  fully successful destroy also deletes the record Secret, so the next
+  `apply` re-converges from scratch instead of resuming into an empty
+  cluster. A teardown that succeeds but cannot remove the record exits 1.
+- A failed step stops new teardown work (`onError: fail` default); steps
+  whose teardown depended on it are reported skipped, and the exit code
+  is 1.
 
 ### `khook plan -f spec.yaml`
 

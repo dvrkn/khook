@@ -10,7 +10,7 @@ description: Normative spec for apiVersion khook.io/v1, kind Khook — step type
 Normative spec for `apiVersion: khook.io/v1`, `kind: Khook`.
 `examples/*.yaml` must always validate against this document; where they
 disagree, this document wins. Anything marked **(roadmap)** is not part of v1
-core — see the command coverage matrix at the bottom and `roadmap.md`.
+core — see the command coverage matrix at the bottom and `ROADMAP.md`.
 
 A machine-readable JSON Schema of this spec is committed at
 [`schema/v1/khook.json`](../schema/v1/khook.json) (also printed by
@@ -158,6 +158,8 @@ Semantics, precisely:
   run (crash, Ctrl-C) resumes from the last completed step.
 - khook refuses to touch a Secret of the record's name that it does not own
   (no `app.kubernetes.io/managed-by: khook` label).
+- A fully successful `khook destroy` deletes the record Secret along with
+  the resources, so the next apply re-converges from scratch.
 - What is stored: per-step input **hashes** and outcomes (with redacted,
   truncated error text), the whole-spec hash, khook's version, and
   timestamps. The rendered spec — which can contain secret values — is
@@ -646,7 +648,7 @@ API server.
 ## Command coverage matrix
 
 What a "cloud-init for k8s" needs, mapped to the DSL. Non-goals excluded
-(see roadmap.md).
+(see ROADMAP.md).
 
 | CLI equivalent | khook | Status |
 |---|---|---|

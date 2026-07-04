@@ -22,6 +22,10 @@
 #      only the step whose inputs changed (the unchanged steps still
 #      resume), khook status reads the record, and a foreign same-name
 #      Secret is refused
+#  10. destroy: reverse-topological teardown — applied manifests and the
+#      state record removed (wait steps skipped, createNamespace namespaces
+#      kept), the job deleted, the helm release uninstalled, and a second
+#      destroy is an idempotent no-op
 #
 # Usage:
 #   ./hack/e2e.sh                 # full run, cluster deleted at the end
@@ -336,6 +340,33 @@ rc=$?
 set -e
 [[ ${rc} -eq 1 ]] || fail "apply against a foreign state secret should exit 1, got ${rc}"
 grep -q "not managed by khook" <<<"${foreign_out}" || fail "error should name the ownership problem, got: ${foreign_out}"
+
+# --- destroy: reverse-topological teardown ------------------------------------
+log "destroy: tears down the state spec and removes the record"
+destroy_out="$(state_spec destroy)"
+grep -Eq 'step-b[[:space:]]+wait[[:space:]]+skipped' <<<"${destroy_out}" || fail "destroy should skip the wait step, got: ${destroy_out}"
+k -n "${STATE_NS}" get configmap state-marker >/dev/null 2>&1 && fail "configmap state-marker should be gone after destroy"
+k -n "${STATE_NS}" get configmap state-final >/dev/null 2>&1 && fail "configmap state-final should be gone after destroy"
+k -n "${STATE_NS}" get secret "${STATE_SECRET}" >/dev/null 2>&1 && fail "state record secret should be gone after destroy"
+k get namespace "${STATE_NS}" >/dev/null || fail "destroy must leave createNamespace namespaces in place"
+status_out="$(state_spec status -o json)"
+grep -q '"found": false' <<<"${status_out}" || fail "status after destroy should report found:false, got: ${status_out}"
+
+log "destroy: removes the e2e-ops job (delete/rollout/wait steps skip)"
+"${KHOOK}" destroy --kubeconfig "${KUBECONFIG_FILE}" \
+  -f "${REPO_ROOT}/hack/testdata/e2e-ops.yaml" \
+  --set OPS_NAMESPACE="${OPS_NS}"
+k -n "${OPS_NS}" get job hello-job >/dev/null 2>&1 && fail "job hello-job should be gone after destroy"
+k -n "${OPS_NS}" get configmap conditional-after >/dev/null 2>&1 && fail "configmap conditional-after should be gone after destroy"
+
+log "destroy: uninstalls examples/simple.yaml; the re-run is an idempotent no-op"
+simple_spec destroy
+release_secrets="$(k -n "${INGRESS_NS}" get secret -l owner=helm,name=ingress-nginx -o name)"
+[[ -z "${release_secrets}" ]] || fail "helm release records should be gone after destroy: ${release_secrets}"
+k get namespace "${DEMO_NS}" >/dev/null 2>&1 && fail "namespace ${DEMO_NS} (an applied manifest) should be gone after destroy"
+k get namespace "${INGRESS_NS}" >/dev/null || fail "namespace ${INGRESS_NS} (helm createNamespace) must be left in place"
+json_out="$(simple_spec destroy --output json)"
+grep -q '"status": "ok"' <<<"${json_out}" || fail "repeated destroy should report status ok, got: ${json_out}"
 
 # --- failure semantics: a failing step must exit 1 and skip dependents -------
 log "asserting failure exit code"

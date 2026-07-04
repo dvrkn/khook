@@ -99,6 +99,26 @@ func (s *Store) Save(ctx context.Context, rec *Record) error {
 	}
 }
 
+// Delete removes the record Secret (destroy). A missing Secret is success;
+// one khook does not own is refused, mirroring Load and Save.
+func (s *Store) Delete(ctx context.Context) error {
+	secrets := s.Client.CoreV1().Secrets(s.Namespace)
+	sec, err := secrets.Get(ctx, s.Name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("reading state record %s: %w", s.Ref(), err)
+	}
+	if sec.Labels[managedByLabelKey] != managedByLabelValue {
+		return fmt.Errorf("secret %s exists but is not managed by khook — not deleting it", s.Ref())
+	}
+	if err := secrets.Delete(ctx, s.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting state record %s: %w", s.Ref(), err)
+	}
+	return nil
+}
+
 func (s *Store) newSecret(raw []byte) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

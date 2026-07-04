@@ -146,6 +146,37 @@ func TestStoreRefusesForeignSecret(t *testing.T) {
 	}
 }
 
+func TestStoreDelete(t *testing.T) {
+	client := k8sfake.NewClientset()
+	store := NewStore(client, "default", "khook-state-test")
+	ctx := context.Background()
+
+	// Missing is success.
+	if err := store.Delete(ctx); err != nil {
+		t.Fatalf("deleting a missing record must succeed, got %v", err)
+	}
+
+	if err := store.Save(ctx, testRecord()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CoreV1().Secrets("default").Get(ctx, "khook-state-test", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("record secret should be gone, got %v", err)
+	}
+}
+
+func TestStoreDeleteRefusesForeignSecret(t *testing.T) {
+	client := k8sfake.NewClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "khook-state-test", Namespace: "default"},
+	})
+	store := NewStore(client, "default", "khook-state-test")
+	if err := store.Delete(context.Background()); err == nil || !strings.Contains(err.Error(), "not managed by khook") {
+		t.Fatalf("Delete must refuse a foreign secret, got %v", err)
+	}
+}
+
 func TestStoreLoadCorrupt(t *testing.T) {
 	client := k8sfake.NewClientset(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

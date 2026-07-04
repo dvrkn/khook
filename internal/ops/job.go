@@ -78,11 +78,20 @@ func (e *Executor) runJob(ctx context.Context, step *spec.Step) error {
 // new Job can be created under the same name.
 func (e *Executor) replaceJob(ctx context.Context, namespace, name string) error {
 	e.Log.Info("replacing previous job", "job", name, "namespace", namespace)
+	return e.deleteJobAndWait(ctx, namespace, name)
+}
+
+// deleteJobAndWait deletes a Job (foreground, so its pods go with it) and
+// polls until it is gone. A missing Job is success.
+func (e *Executor) deleteJobAndWait(ctx context.Context, namespace, name string) error {
 	jobs := e.Clients.Typed.BatchV1().Jobs(namespace)
 	foreground := metav1.DeletePropagationForeground
 	err := jobs.Delete(ctx, name, metav1.DeleteOptions{PropagationPolicy: &foreground})
-	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("deleting previous job %q: %w", name, err)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("deleting job %q: %w", name, err)
 	}
 	return poll(ctx, func(ctx context.Context) (bool, error) {
 		_, err := jobs.Get(ctx, name, metav1.GetOptions{})
@@ -90,7 +99,7 @@ func (e *Executor) replaceJob(ctx context.Context, namespace, name string) error
 			return true, nil
 		}
 		if err != nil {
-			return false, fmt.Errorf("waiting for previous job %q to be deleted: %w", name, err)
+			return false, fmt.Errorf("waiting for job %q to be deleted: %w", name, err)
 		}
 		return false, nil
 	})

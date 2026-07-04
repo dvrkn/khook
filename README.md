@@ -10,7 +10,7 @@ One static binary that takes a freshly created cluster from
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Kubernetes SDK](https://img.shields.io/badge/client--go-v0.36-326CE5?logo=kubernetes&logoColor=white)](go.mod)
 [![Helm SDK](https://img.shields.io/badge/helm-v4-0F1689?logo=helm&logoColor=white)](go.mod)
-[![Status](https://img.shields.io/badge/status-pre--release-orange)](roadmap.md)
+[![Status](https://img.shields.io/badge/status-pre--release-orange)](ROADMAP.md)
 
 [The pitch](#the-pitch) · [Quickstart](#try-it-in-60-seconds) ·
 [vs Terraform](#isnt-this-just-terraforms-kuberneteshelm-providers) ·
@@ -176,8 +176,10 @@ Grafana at `grafana.localhost`).
 | Command | What it does |
 |---|---|
 | `khook apply -f spec.yaml` | execute the spec against the cluster |
+| `khook destroy -f spec.yaml` | tear down what the spec created, in reverse dependency order (dev clusters; helm releases, applied manifests, jobs) |
 | `khook plan -f spec.yaml` | show what apply would do — install vs upgrade vs skip, checked against the cluster (`--diff` for rendered object diffs via server-side dry-run, `--offline` for the DAG-only plan) |
 | `khook validate -f spec.yaml` | parse + validate (exit 2 on problems) |
+| `khook status -f spec.yaml` | read the spec's run-state record (`state:`) and show the last run — what succeeded, what failed, what the next apply resumes |
 | `khook graph -f spec.yaml` | emit the step DAG as Mermaid (default) or Graphviz DOT (`--format dot`) for docs and review |
 | `khook schema` | print the spec's JSON Schema (committed at [`schema/v1/khook.json`](schema/v1/khook.json) — point `# yaml-language-server: $schema=...` at it for editor validation and autocomplete) |
 | `khook version` | print version info |
@@ -187,10 +189,11 @@ semantics: [`docs/cli.md`](docs/cli.md).
 
 ## Status
 
-The v1 core is implemented and tested (unit + k3d end-to-end): the five step
-types, DAG engine, variables, and the CLI above. Pre-release — no published
-binaries yet; OCI charts, resumable runs, and a Terraform/Lambda
-integration are on the [roadmap](roadmap.md).
+The v1 core is implemented and tested (unit + k3d end-to-end): the step
+types, DAG engine, variables, resumable runs (`state:`), teardown
+(`destroy`), and the CLI above. Pre-release — no published binaries yet;
+CI, release channels, and a Terraform/Lambda integration are on the
+[roadmap](ROADMAP.md).
 
 ## Development
 

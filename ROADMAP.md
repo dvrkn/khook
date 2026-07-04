@@ -26,15 +26,7 @@ the [README](README.md); when an item here ships, it moves there.
 
 ---
 
-## Phase 1 — Idempotency, state & resume (make re-runs first-class)
-
-*Goal: a failed bootstrap at step 7/12 is a resume, not a redo — delivered
-by the `state:` record and its per-step change detection (see `docs/dsl.md`).
-Remaining:*
-
-- [ ] **`destroy` (stretch)**: reverse-topological teardown for dev clusters.
-
-## Phase 2 — Delivery & integrations (meet users where clusters are created)
+## Phase 1 — Delivery & integrations (meet users where clusters are created)
 
 *Goal: trivially runnable from every place a cluster gets created.*
 
@@ -62,7 +54,7 @@ Remaining:*
       auth (run as a Job inside the cluster it bootstraps).
 - [ ] **GitHub Action**: `uses: dvrkn/khook-action` — validate on PR, apply on merge.
 
-## Phase 3 — Observability & scale (nice-to-have, demand-driven)
+## Phase 2 — Observability & scale (nice-to-have, demand-driven)
 
 - [ ] OpenTelemetry traces (one span per step — DAG visualizes for free in any
       trace viewer)
@@ -106,11 +98,10 @@ Remaining:*
 
 ## Suggested order of attack
 
-1. CI first (Phase 2) — it is cheap and guards everything else. With
+1. CI first (Phase 1) — it is cheap and guards everything else. With
    change detection shipped, "safe to re-run, resumes on failure" — the core
    promise of a bootstrapper — is delivered; nothing else blocks advertising.
-2. The rest of Phases 2–3 as adoption demands; `destroy` only if dev-cluster
-   workflows actually ask for it.
+2. The rest of Phases 1–2 as adoption demands.
 
 ## Open questions
 

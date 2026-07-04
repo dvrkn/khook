@@ -74,6 +74,7 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(
 		newApplyCommand(opts),
+		newDestroyCommand(opts),
 		newPlanCommand(opts),
 		newValidateCommand(opts),
 		newStatusCommand(opts),

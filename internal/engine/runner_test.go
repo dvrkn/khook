@@ -294,7 +294,7 @@ func TestRunLevelParallelism(t *testing.T) {
 func TestRunSkipCompleted(t *testing.T) {
 	rec := &recorder{}
 	r := newTestRunner(spec.Defaults{}, rec.exec)
-	r.SkipCompleted = map[string]bool{"done": true}
+	r.Skip = map[string]string{"done": SkipReasonPriorRun}
 
 	var events []Event
 	r.OnEvent = func(ev Event) { events = append(events, ev) }
@@ -333,7 +333,7 @@ func TestRunSkipCompleted(t *testing.T) {
 func TestRunSkipCompletedExcludedWins(t *testing.T) {
 	rec := &recorder{}
 	r := newTestRunner(spec.Defaults{}, rec.exec)
-	r.SkipCompleted = map[string]bool{"both": true}
+	r.Skip = map[string]string{"both": SkipReasonPriorRun}
 
 	s := step("both")
 	s.When = `vars.X == "on"`
@@ -353,7 +353,7 @@ func TestRunSkipCompletedFailedStepsRerun(t *testing.T) {
 	rec := &recorder{}
 	r := newTestRunner(spec.Defaults{}, rec.exec)
 	// Only "a" is recorded ok; "b" failed last run and must re-run.
-	r.SkipCompleted = map[string]bool{"a": true}
+	r.Skip = map[string]string{"a": SkipReasonPriorRun}
 
 	results, err := r.Run(context.Background(), steps(step("a"), step("b", "a")))
 	if err != nil {

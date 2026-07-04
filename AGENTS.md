@@ -16,7 +16,7 @@ k3d E2E) is implemented. Read in this order before doing anything:
 1. **`docs/dsl.md`** — normative DSL spec: field-level reference for the v1 step
    types and the kubectl/helm command coverage matrix.
 2. **`docs/cli.md`** — CLI reference: commands, flags, variables, exit codes.
-3. **`roadmap.md`** — future work only (vision, phased plan, non-goals, open
+3. **`ROADMAP.md`** — future work only (vision, phased plan, non-goals, open
    questions).
 4. **`examples/*.yaml`** — spec-by-example. Changes must keep these valid against
    `docs/dsl.md`; `real-case.yaml` is the benchmark a v1 must handle cleanly.

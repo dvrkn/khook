@@ -91,3 +91,35 @@ func TestLevelsUnknownNeed(t *testing.T) {
 		t.Fatal("want unknown-need error")
 	}
 }
+
+func TestReversedDiamond(t *testing.T) {
+	original := steps(
+		step("top"),
+		step("left", "top"),
+		step("right", "top"),
+		step("bottom", "left", "right"),
+	)
+	levels, err := Levels(Reversed(original))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := levelNames(levels)
+	if len(got) != 3 || got[0][0] != "bottom" || len(got[1]) != 2 || got[2][0] != "top" {
+		t.Fatalf("got %v, want [[bottom] [left right] [top]]", got)
+	}
+	// The input must not be mutated.
+	if len(original[0].Needs) != 0 || len(original[3].Needs) != 2 {
+		t.Fatalf("Reversed mutated its input: %v", original)
+	}
+}
+
+func TestReversedIndependentSteps(t *testing.T) {
+	levels, err := Levels(Reversed(steps(step("a"), step("b"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := levelNames(levels)
+	if len(got) != 1 || len(got[0]) != 2 {
+		t.Fatalf("got %v, want one level of two", got)
+	}
+}

@@ -10,6 +10,30 @@ import (
 	"github.com/dvrkn/khook/internal/spec"
 )
 
+// Reversed returns a copy of the steps with every needs edge inverted: if A
+// needs B to build, B "needs" A to tear down. Feeding the result to Levels
+// yields reverse-topological teardown order (destroy). Edge order follows
+// spec order, so output is deterministic.
+func Reversed(steps []spec.Step) []spec.Step {
+	index := map[string]int{}
+	for i := range steps {
+		index[steps[i].Name] = i
+	}
+	out := make([]spec.Step, len(steps))
+	copy(out, steps)
+	for i := range out {
+		out[i].Needs = nil
+	}
+	for i := range steps {
+		for _, need := range steps[i].Needs {
+			if j, ok := index[need]; ok {
+				out[j].Needs = append(out[j].Needs, steps[i].Name)
+			}
+		}
+	}
+	return out
+}
+
 // Levels topologically sorts steps into execution levels (Kahn's algorithm):
 // every step lands one level after the deepest step it needs. A dependency
 // cycle is an error naming the steps involved. Order within a level follows
