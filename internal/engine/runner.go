@@ -58,9 +58,9 @@ type Event struct {
 	Result      *Result // done
 }
 
-// SkipReasonPriorRun marks steps skipped because the state record says a
-// previous run of the same spec already completed them.
-const SkipReasonPriorRun = "succeeded in a previous run (state record)"
+// SkipReasonPriorRun marks steps skipped because the state record proves a
+// previous run already completed them with the same inputs.
+const SkipReasonPriorRun = "unchanged since it succeeded in a previous run (state record)"
 
 // Runner executes a validated document.
 type Runner struct {

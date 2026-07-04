@@ -34,15 +34,15 @@ func stateTestDoc() *spec.Document {
 	}
 }
 
-func priorRecord(hash string) *state.Record {
+func priorRecord(hashes map[string]string) *state.Record {
 	return &state.Record{
 		APIVersion: state.RecordAPIVersion,
 		SpecName:   "test",
-		SpecHash:   hash,
+		SpecHash:   "sha256:prior-spec",
 		RunStatus:  state.RunStatusFailed,
 		Steps: []state.StepRecord{
-			{Name: "a", Type: "apply", Status: "ok", Attempts: 1},
-			{Name: "b", Type: "wait", Status: "failed"},
+			{Name: "a", Type: "apply", InputHash: hashes["a"], Status: "ok", Attempts: 1},
+			{Name: "b", Type: "wait", InputHash: hashes["b"], Status: "failed"},
 		},
 	}
 }
@@ -53,41 +53,61 @@ func TestSeedRecordAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	hashes := state.StepHashes(doc)
 
-	// Hash match: recorded-ok steps resume and carry over.
-	prior := priorRecord(hash)
-	skip := resumableSteps(prior, hash, doc)
+	// Matching input hash: the recorded-ok step resumes and carries over;
+	// the failed step does neither.
+	prior := priorRecord(hashes)
+	skip := resumableSteps(prior, hashes, doc)
 	if !skip["a"] || skip["b"] {
 		t.Fatalf("skip = %v, want only a", skip)
 	}
-	rec := seedRecord(doc, prior, hash)
+	rec := seedRecord(doc, prior, hash, hashes, skip)
 	if rec.RunStatus != state.RunStatusRunning || len(rec.Steps) != 2 {
 		t.Fatalf("seed = %+v", rec)
 	}
-	if got := rec.Step("a"); got.Status != "ok" || got.Attempts != 1 {
+	if got := rec.Step("a"); got.Status != "ok" || got.Attempts != 1 || got.InputHash != hashes["a"] {
 		t.Fatalf("carried a = %+v, want prior ok entry", got)
 	}
-	if got := rec.Step("b"); got.Status != "" {
-		t.Fatalf("b = %+v, want fresh entry (prior failure not carried)", got)
+	if got := rec.Step("b"); got.Status != "" || got.InputHash != hashes["b"] {
+		t.Fatalf("b = %+v, want fresh entry with the current hash (prior failure not carried)", got)
 	}
 
-	// Hash mismatch: nothing resumes, nothing carries.
-	skip = resumableSteps(prior, "sha256:other", doc)
-	if len(skip) != 0 {
-		t.Fatalf("hash mismatch must not resume, got %v", skip)
+	// A changed step re-runs; the unchanged one still resumes even though
+	// the rest of the spec (and hence the whole-spec hash) changed.
+	doc.Steps[0].Apply.Manifests[0].Inline = "y"
+	changed := state.StepHashes(doc)
+	skip = resumableSteps(prior, changed, doc)
+	if skip["a"] {
+		t.Fatal("a changed step must not resume")
 	}
-	rec = seedRecord(doc, prior, "sha256:other")
-	if got := rec.Step("a"); got.Status != "" {
-		t.Fatalf("hash mismatch must not carry entries, got %+v", got)
+	prior.Steps[1].Status = "ok"
+	skip = resumableSteps(prior, changed, doc)
+	if skip["a"] || !skip["b"] {
+		t.Fatalf("skip = %v, want only the unchanged b", skip)
+	}
+	rec = seedRecord(doc, prior, "sha256:new-spec", changed, skip)
+	if got := rec.Step("a"); got.Status != "" || got.InputHash != changed["a"] {
+		t.Fatalf("changed a = %+v, want fresh entry with the new hash", got)
+	}
+	if got := rec.Step("b"); got.Status != "ok" {
+		t.Fatalf("unchanged b = %+v, want carried ok entry", got)
+	}
+
+	// A prior entry without an input hash (older khook) never resumes.
+	prior.Steps[1].InputHash = ""
+	if skip := resumableSteps(prior, changed, doc); len(skip) != 0 {
+		t.Fatalf("hashless prior entries must not resume, got %v", skip)
 	}
 
 	// Prior step no longer in the spec: dropped, not resumed.
-	prior.Steps = append(prior.Steps, state.StepRecord{Name: "gone", Status: "ok"})
-	skip = resumableSteps(prior, hash, doc)
+	prior = priorRecord(hashes)
+	prior.Steps = append(prior.Steps, state.StepRecord{Name: "gone", Status: "ok", InputHash: "sha256:x"})
+	skip = resumableSteps(prior, changed, doc)
 	if skip["gone"] {
 		t.Fatal("removed steps must not resume")
 	}
-	if seedRecord(doc, prior, hash).Step("gone") != nil {
+	if seedRecord(doc, prior, hash, changed, skip).Step("gone") != nil {
 		t.Fatal("removed steps must not be carried into the new record")
 	}
 }
@@ -95,7 +115,8 @@ func TestSeedRecordAndResume(t *testing.T) {
 func newTestRecorder(t *testing.T, doc *spec.Document, prior *state.Record, hash string) (*stateRecorder, *state.Store) {
 	t.Helper()
 	store := state.NewStore(k8sfake.NewClientset(), "default", "khook-state-test")
-	rec := seedRecord(doc, prior, hash)
+	hashes := state.StepHashes(doc)
+	rec := seedRecord(doc, prior, hash, hashes, resumableSteps(prior, hashes, doc))
 	if err := store.Save(context.Background(), rec); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +139,7 @@ func doneEvent(step *spec.Step, res engine.Result) engine.Event {
 func TestStateRecorderHandle(t *testing.T) {
 	doc := stateTestDoc()
 	hash, _ := state.SpecHash(doc)
-	prior := priorRecord(hash)
+	prior := priorRecord(state.StepHashes(doc))
 	recorder, store := newTestRecorder(t, doc, prior, hash)
 
 	forwarded := 0

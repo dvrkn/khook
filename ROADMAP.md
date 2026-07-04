@@ -28,13 +28,10 @@ the [README](README.md); when an item here ships, it moves there.
 
 ## Phase 1 — Idempotency, state & resume (make re-runs first-class)
 
-*Goal: a failed bootstrap at step 7/12 is a resume, not a redo.*
+*Goal: a failed bootstrap at step 7/12 is a resume, not a redo — delivered
+by the `state:` record and its per-step change detection (see `docs/dsl.md`).
+Remaining:*
 
-- [ ] **Change detection**: extend the shipped run-state record (`state:`, see
-      `docs/dsl.md`) with per-step input hashes (chart version + values +
-      manifests); a step that is unchanged *and* previously successful skips
-      even when the rest of the spec changed. Today the record resumes only
-      while the whole-spec hash matches.
 - [ ] **`destroy` (stretch)**: reverse-topological teardown for dev clusters.
 
 ## Phase 2 — Delivery & integrations (meet users where clusters are created)
@@ -109,11 +106,11 @@ the [README](README.md); when an item here ships, it moves there.
 
 ## Suggested order of attack
 
-1. Phase 1 before advertising widely — "safe to re-run, resumes on failure" is the
-   core promise of a bootstrapper, and the shipped `state:` record needs its
-   change-detection half to fully deliver it.
-2. Phases 2–3 as adoption demands (CI early, though — it is cheap and guards
-   everything else).
+1. CI first (Phase 2) — it is cheap and guards everything else. With
+   change detection shipped, "safe to re-run, resumes on failure" — the core
+   promise of a bootstrapper — is delivered; nothing else blocks advertising.
+2. The rest of Phases 2–3 as adoption demands; `destroy` only if dev-cluster
+   workflows actually ask for it.
 
 ## Open questions
 

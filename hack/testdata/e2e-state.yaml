@@ -1,9 +1,9 @@
 # E2E coverage for the run-state record (state:): a three-step chain gated on
 # a ConfigMap the e2e creates out-of-band between runs, so run 1 fails at
-# step-b, and run 2 — the *identical* spec, hence a matching hash — resumes:
-# step-a skips from the record, step-b's wait now succeeds, step-c runs.
-# MARKER is substituted into step-a's manifest so the e2e can force a hash
-# mismatch (full re-run) by changing it.
+# step-b, and run 2 — the *identical* spec — resumes: step-a skips from the
+# record, step-b's wait now succeeds, step-c runs. MARKER is substituted into
+# step-a's manifest so the e2e can change one step's inputs and prove the
+# per-step change detection: step-a re-runs, step-b and step-c still resume.
 apiVersion: khook.io/v1
 kind: Khook
 metadata:

@@ -69,13 +69,14 @@ against the cluster. Output depends on where it runs:
 
 When the spec enables [`state:`](dsl.md#state--the-run-state-record), apply
 also maintains the run-state record: it loads the record Secret before the
-first step (proving it is writable — an unwritable record fails the run
-up front), skips steps a previous run of the *same* spec completed
-(summary/JSON show them `skipped` with reason
-`succeeded in a previous run (state record)`), journals every step outcome
-as it happens, and stamps the final run status. A run whose steps all
-succeed but whose record cannot be written **exits 1** — opting into state
-makes the journal part of the contract.
+first step (proving it is writable — an unwritable record fails the run up
+front), skips steps a previous run completed **whose inputs are unchanged**
+— the comparison is per step, so editing one step re-runs only that step
+(summary/JSON show resumed steps `skipped` with reason
+`unchanged since it succeeded in a previous run (state record)`) — journals
+every step outcome as it happens, and stamps the final run status. A run
+whose steps all succeed but whose record cannot be written **exits 1** —
+opting into state makes the journal part of the contract.
 
 ### `khook plan -f spec.yaml`
 
@@ -142,7 +143,7 @@ See the DSL page for when enabling state is worth it.
 spec:    prod-bootstrap
 record:  secret kube-system/khook-state-prod-bootstrap (khook v0.3.0)
 run:     failed, started 2026-07-04T10:00:00+03:00, updated 2026-07-04T10:04:12+03:00
-spec is unchanged since this run — the next apply resumes past completed steps
+spec has changed since this run — 1 unchanged completed step(s) still resume on the next apply
 
 STEP     TYPE   STATUS   ATTEMPTS  DURATION  DETAIL
 cni      helm   ok       1         1m12s
@@ -150,12 +151,19 @@ ingress  helm   failed   3         2m40s     context deadline exceeded
 smoke    job    skipped                      needs "ingress" which did not succeed
 ```
 
+The summary line predicts the next apply: which completed steps still
+resume under the per-step change detection. A completed step whose inputs
+changed since it ran is flagged `input changed — will re-run` in the
+detail column; one that was edited out of the spec shows
+`no longer in the spec`.
+
 - A spec that does not enable `state:` is a validation error (exit 2) —
   there is no record to read.
 - **No record found exits 0** with a message: "not applied yet" is a valid
   answer, not a failure. Scripts should use `-o, --output json`, which
   prints `{"found": false}` in that case and
-  `{"found": true, "specChanged": ..., "record": {...}}` otherwise.
+  `{"found": true, "specChanged": ..., "resumableSteps": [...], "record": {...}}`
+  otherwise (`resumableSteps` lists the steps the next apply resume-skips).
 - A step shown with status `-` was seeded but never finished — the run
   crashed or was interrupted while it was in flight; `runStatus` may also
   still read `running` (it is a marker, not a lock).

@@ -105,10 +105,12 @@ Fallbacks for the per-step fields of the same name.
 ## `state:` — the run-state record
 
 Optional and off by default. When present, khook journals the run in an
-in-cluster Secret — the spec's hash plus every step's outcome — and a re-run
-of the *same* spec resumes: steps the record proves complete are skipped
-(reported `skipped` with reason `succeeded in a previous run (state
-record)`) and still satisfy `needs`. The record is a journal, not an
+in-cluster Secret — a per-step input hash plus every step's outcome — and a
+re-run resumes: steps whose inputs are unchanged since they last succeeded
+are skipped (reported `skipped` with reason `unchanged since it succeeded
+in a previous run (state record)`) and still satisfy `needs`. Change
+detection is per step: editing one step re-runs that step and only that
+step — the rest of the spec still resumes. The record is a journal, not an
 ownership ledger: delete the Secret and nothing breaks — the next run just
 re-converges everything.
 
@@ -128,21 +130,38 @@ state:
 
 Semantics, precisely:
 
-- The record keys on a **whole-spec hash** taken after variable substitution
-  and parsing. Cosmetic YAML edits (comments, key order, quoting) do not
-  change it; any effective change — a value, a version, a rotated secret
-  that is substituted into the document — does, and a changed hash means the
-  record is ignored and the run starts fresh.
-- Only steps recorded `ok` resume. Failed and skipped steps re-run. `when:`
-  is re-evaluated every run and wins over the record. Per-op `skipIf` checks
-  are unchanged and still guard the steps that actually execute.
+- Every step is fingerprinted by an **input hash**: the canonical form of
+  its action block after variable substitution — chart, version, values,
+  manifests, patch body — plus the content of every **local file** the
+  block references (`manifests[].file`, `kustomize:` directories,
+  `valuesFrom[].file`, local chart paths). Cosmetic YAML edits (comments,
+  key order, quoting) do not change it; any effective change does —
+  including editing a referenced local file, and including a rotated secret
+  value that is substituted into the step.
+- A step resumes when the record shows it **succeeded with the same input
+  hash**; the comparison is per step, so other steps changing never stops
+  an unchanged one from resuming. Failed and skipped steps re-run. `when:`
+  is re-evaluated every run and wins over the record. Per-op `skipIf`
+  checks are unchanged and still guard the steps that actually execute.
+- Scheduling is not an input: changing `needs`, `when`, `timeout`,
+  `retries`, `retryDelay`, or `onError` does not re-run a completed step.
+  Renaming a step does — the name keys the record.
+- **Remote content is identified by reference, not fingerprinted**: the
+  hash cannot see new content appear behind an unchanged `url:` source, a
+  mutable OCI tag, or a chart with no pinned `version:`. Pin versions —
+  that is what makes re-runs reproducible anyway — or delete the record
+  Secret to force a full re-converge.
+- A changed step never forces its dependents to re-run: `needs` expresses
+  ordering only, and steps do not pass data through khook (see the
+  non-goals), so a dependent's inputs cannot change via its dependency.
 - The journal is written incrementally after every step, so an interrupted
   run (crash, Ctrl-C) resumes from the last completed step.
 - khook refuses to touch a Secret of the record's name that it does not own
   (no `app.kubernetes.io/managed-by: khook` label).
-- What is stored: the spec **hash**, khook's version, timestamps, and
-  per-step outcomes with redacted, truncated error text. The rendered spec —
-  which can contain secret values — is never written to the cluster.
+- What is stored: per-step input **hashes** and outcomes (with redacted,
+  truncated error text), the whole-spec hash, khook's version, and
+  timestamps. The rendered spec — which can contain secret values — is
+  never written to the cluster.
 
 ### When to enable it
 
@@ -171,8 +190,9 @@ what the last run did.
 - the spec is small and fast — re-running everything costs seconds;
 - the cluster is throwaway (k3d/kind recreated more often than re-applied);
 - khook's credentials cannot get Secret write access in the state namespace;
-- the spec's inputs change on every run (the hash would never match, so the
-  record would never resume — pure overhead).
+- every step's inputs change on every run (e.g. a timestamp variable
+  substituted into each step) — no hash would ever match, so the record
+  would never resume — pure overhead.
 
 It is **never required**: khook without state is already idempotent per
 step. State is an optimization for resume speed and run observability, not
@@ -186,10 +206,13 @@ a correctness requirement.
   skipped even if its resources were deleted out-of-band since the last run.
   khook does no drift detection — by design, that's the GitOps controller's
   job. Mitigation: delete the record Secret (the next run re-converges
-  everything) or change the spec (hash mismatch forces a fresh run).
-- **Any effective spec change means a full re-run** — including rotated
-  secret values that are substituted into the document. Per-step change
-  detection is on the roadmap, not in the record today.
+  everything) or edit the affected step (its input hash changes, so it
+  re-runs).
+- **Remote content changes are invisible.** A step referencing a `url:`
+  manifest or values source, a mutable OCI tag, or a chart without a pinned
+  `version:` can pick up new upstream content without its input hash
+  changing — the step still resume-skips. Pin what you can; delete the
+  record when you cannot.
 - **Single runner assumed.** No locking, no leader election; two concurrent
   applies against the same record are last-write-wins.
 - **A run that succeeds but cannot write its record exits 1.** Opting into

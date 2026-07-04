@@ -1,9 +1,9 @@
 // Package state persists a run-state record — a journal of one spec's last
-// run (spec hash + per-step outcomes) — in an in-cluster Secret, so a re-run
-// can resume past steps that already succeeded. The record stores only a
-// hash of the spec, never its content: the rendered document can contain
-// secret values, and nothing that leaves the process is redacted except
-// terminal output.
+// run (per-step input hashes + outcomes) — in an in-cluster Secret, so a
+// re-run can resume past steps that already succeeded with unchanged
+// inputs. The record stores only hashes, never spec content: the rendered
+// document can contain secret values, and nothing that leaves the process
+// is redacted except terminal output.
 package state
 
 import (
@@ -42,10 +42,13 @@ type Record struct {
 	Steps        []StepRecord `json:"steps"`
 }
 
-// StepRecord is one step's outcome, in spec order.
+// StepRecord is one step's outcome, in spec order. InputHash is the step's
+// input fingerprint (StepHash) at the time it ran; a re-run resumes past
+// the step only while the current fingerprint still matches.
 type StepRecord struct {
 	Name       string    `json:"name"`
 	Type       string    `json:"type"`
+	InputHash  string    `json:"inputHash,omitempty"`
 	Status     string    `json:"status,omitempty"`
 	Attempts   int       `json:"attempts,omitempty"`
 	DurationMs int64     `json:"durationMs,omitempty"`
@@ -66,9 +69,10 @@ func (r *Record) Step(name string) *StepRecord {
 
 // SpecHash fingerprints the parsed document. Hashing the canonical JSON
 // form (encoding/json sorts map keys) rather than the source bytes means
-// cosmetic YAML edits — comments, key order, quoting — do not invalidate
-// the record, while any effective change (including rotated secret values
-// substituted into the document) forces a fresh run.
+// cosmetic YAML edits — comments, key order, quoting — do not change it.
+// Resume decisions key on the per-step hashes (StepHash); the whole-spec
+// hash is recorded so `khook status` can report whether the spec as a
+// whole changed since the last run.
 func SpecHash(doc *spec.Document) (string, error) {
 	b, err := json.Marshal(doc)
 	if err != nil {

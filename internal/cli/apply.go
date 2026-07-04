@@ -57,17 +57,18 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 				if err != nil {
 					return executionErr(err)
 				}
+				hashes := state.StepHashes(doc)
+				skipCompleted = resumableSteps(prior, hashes, doc)
 				switch {
 				case prior == nil:
-				case !usablePrior(prior, hash):
-					root.log.Info("state record ignored: spec changed since last run", "secret", store.Ref())
+				case len(skipCompleted) == 0:
+					root.log.Info("state record found but nothing resumes: no step is both completed and unchanged", "secret", store.Ref())
+				case prior.SpecHash != hash:
+					root.log.Info("spec changed since last run; unchanged completed steps still resume", "secret", store.Ref(), "resumed", len(skipCompleted))
 				default:
-					skipCompleted = resumableSteps(prior, hash, doc)
-					if len(skipCompleted) > 0 {
-						root.log.Info("resuming from state record", "secret", store.Ref(), "completed", len(skipCompleted))
-					}
+					root.log.Info("resuming from state record", "secret", store.Ref(), "resumed", len(skipCompleted))
 				}
-				rec := seedRecord(doc, prior, hash)
+				rec := seedRecord(doc, prior, hash, hashes, skipCompleted)
 				if err := store.Save(cmd.Context(), rec); err != nil {
 					return executionErr(fmt.Errorf("state: is enabled but the record cannot be written: %w", err))
 				}

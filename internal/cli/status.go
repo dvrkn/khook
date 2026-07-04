@@ -9,7 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dvrkn/khook/internal/engine"
 	"github.com/dvrkn/khook/internal/kube"
+	"github.com/dvrkn/khook/internal/spec"
 	"github.com/dvrkn/khook/internal/state"
 )
 
@@ -42,19 +44,21 @@ func newStatusCommand(root *rootOptions) *cobra.Command {
 			}
 
 			specChanged := false
+			var resumable map[string]bool
 			if rec != nil {
 				hash, err := state.SpecHash(doc)
 				if err != nil {
 					return executionErr(err)
 				}
 				specChanged = rec.SpecHash != hash
+				resumable = resumableSteps(rec, state.StepHashes(doc), doc)
 			}
 
 			out := root.redact.Wrap(cmd.OutOrStdout())
 			if output == "json" {
-				return printStatusJSON(out, rec, specChanged)
+				return printStatusJSON(out, doc, rec, specChanged, resumable)
 			}
-			printStatusText(out, store.Ref(), rec, specChanged)
+			printStatusText(out, doc, store.Ref(), rec, specChanged, resumable)
 			return nil
 		},
 	}
@@ -63,7 +67,7 @@ func newStatusCommand(root *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func printStatusText(w io.Writer, secretRef string, rec *state.Record, specChanged bool) {
+func printStatusText(w io.Writer, doc *spec.Document, secretRef string, rec *state.Record, specChanged bool, resumable map[string]bool) {
 	if rec == nil {
 		fmt.Fprintf(w, "no state record at secret %s — the spec has not been applied yet (or the record was deleted)\n", secretRef)
 		return
@@ -74,19 +78,34 @@ func printStatusText(w io.Writer, secretRef string, rec *state.Record, specChang
 		rec.RunStatus,
 		rec.StartedAt.Local().Format(time.RFC3339),
 		rec.UpdatedAt.Local().Format(time.RFC3339))
-	if specChanged {
-		fmt.Fprintln(w, "spec has changed since this run — the next apply starts fresh")
-	} else {
+	switch {
+	case !specChanged:
 		fmt.Fprintln(w, "spec is unchanged since this run — the next apply resumes past completed steps")
+	case len(resumable) > 0:
+		fmt.Fprintf(w, "spec has changed since this run — %d unchanged completed step(s) still resume on the next apply\n", len(resumable))
+	default:
+		fmt.Fprintln(w, "spec has changed since this run — no completed step is unchanged; the next apply runs every step")
 	}
 	fmt.Fprintln(w)
 
+	current := map[string]bool{}
+	for i := range doc.Steps {
+		current[doc.Steps[i].Name] = true
+	}
 	tw := tabwriter.NewWriter(w, 2, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "STEP\tTYPE\tSTATUS\tATTEMPTS\tDURATION\tDETAIL")
 	for _, sr := range rec.Steps {
 		detail := sr.SkipReason
 		if sr.Error != "" {
 			detail = sr.Error
+		}
+		// A completed step that will not resume is worth calling out: its
+		// inputs changed (or it left the spec) since this run.
+		if detail == "" && sr.Status == string(engine.StatusOK) && !resumable[sr.Name] {
+			detail = "input changed — will re-run"
+			if !current[sr.Name] {
+				detail = "no longer in the spec"
+			}
 		}
 		attempts := ""
 		if sr.Attempts > 0 {
@@ -105,15 +124,24 @@ func printStatusText(w io.Writer, secretRef string, rec *state.Record, specChang
 	tw.Flush()
 }
 
-// statusJSON is the --output json document.
+// statusJSON is the --output json document. ResumableSteps lists, in spec
+// order, the steps the next apply would resume-skip: recorded ok with an
+// input hash matching the step's current inputs.
 type statusJSON struct {
-	Found       bool          `json:"found"`
-	SpecChanged bool          `json:"specChanged,omitempty"`
-	Record      *state.Record `json:"record,omitempty"`
+	Found          bool          `json:"found"`
+	SpecChanged    bool          `json:"specChanged,omitempty"`
+	ResumableSteps []string      `json:"resumableSteps,omitempty"`
+	Record         *state.Record `json:"record,omitempty"`
 }
 
-func printStatusJSON(w io.Writer, rec *state.Record, specChanged bool) error {
+func printStatusJSON(w io.Writer, doc *spec.Document, rec *state.Record, specChanged bool, resumable map[string]bool) error {
+	out := statusJSON{Found: rec != nil, SpecChanged: specChanged, Record: rec}
+	for i := range doc.Steps {
+		if resumable[doc.Steps[i].Name] {
+			out.ResumableSteps = append(out.ResumableSteps, doc.Steps[i].Name)
+		}
+	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(statusJSON{Found: rec != nil, SpecChanged: specChanged, Record: rec})
+	return enc.Encode(out)
 }

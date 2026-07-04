@@ -134,12 +134,12 @@ between "cluster exists" and "GitOps has the wheel."
 *"But you'll have state too."* The opt-in run record
 ([`state:`](docs/dsl.md), off by default) does store state in an in-cluster
 Secret — same place as Terraform's `kubernetes` backend, same trick as
-Helm's release records. The difference is what's in it: a **journal** (spec
-hash, per-step outcome) so a failed bootstrap resumes at step 7 instead of
-redoing 12 (`khook status` shows where it stands); skipping individually
-unchanged steps is planned on top. It is not an ownership ledger of your
-cluster's objects. Delete it and nothing breaks — the next run just
-re-converges.
+Helm's release records. The difference is what's in it: a **journal**
+(per-step input hash and outcome) so a failed bootstrap resumes at step 7
+instead of redoing 12, and an edited spec re-runs only the steps whose
+inputs actually changed (`khook status` shows where it stands and what
+would resume). It is not an ownership ledger of your cluster's objects.
+Delete it and nothing breaks — the next run just re-converges.
 
 ## How it works
 

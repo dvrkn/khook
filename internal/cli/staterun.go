@@ -15,55 +15,49 @@ import (
 // object regardless of how verbose an executor failure is.
 const maxStateErrLen = 2048
 
-// usablePrior reports whether a prior record can drive a resume: same
-// format, same spec hash.
-func usablePrior(prior *state.Record, hash string) bool {
-	return prior != nil && prior.APIVersion == state.RecordAPIVersion && prior.SpecHash == hash
-}
-
-// resumableSteps returns the steps a usable prior record proves complete
-// (recorded ok, and still present in the current document).
-func resumableSteps(prior *state.Record, hash string, doc *spec.Document) map[string]bool {
-	if !usablePrior(prior, hash) {
+// resumableSteps returns the steps the prior record proves both complete
+// and unchanged: recorded ok, still present in the current document, and
+// with a recorded input hash matching the step's current one. The
+// comparison is per step — the rest of the spec changing does not stop an
+// unchanged step from resuming. A prior entry without an input hash (a
+// record written by a khook that predates them) never resumes.
+func resumableSteps(prior *state.Record, hashes map[string]string, doc *spec.Document) map[string]bool {
+	if prior == nil || prior.APIVersion != state.RecordAPIVersion {
 		return nil
 	}
-	current := map[string]bool{}
-	for i := range doc.Steps {
-		current[doc.Steps[i].Name] = true
-	}
 	m := map[string]bool{}
-	for _, sr := range prior.Steps {
-		if sr.Status == string(engine.StatusOK) && current[sr.Name] {
-			m[sr.Name] = true
+	for i := range doc.Steps {
+		name := doc.Steps[i].Name
+		sr := prior.Step(name)
+		if sr != nil && sr.Status == string(engine.StatusOK) &&
+			sr.InputHash != "" && sr.InputHash == hashes[name] {
+			m[name] = true
 		}
 	}
 	return m
 }
 
-// seedRecord builds this run's record: every current step in spec order,
-// carrying completed entries over from a usable prior record so a resumed
-// run's journal still shows when the carried steps actually ran.
-func seedRecord(doc *spec.Document, prior *state.Record, hash string) *state.Record {
+// seedRecord builds this run's record: every current step in spec order
+// with its current input hash, carrying resumable entries over verbatim so
+// a resumed run's journal still shows when the carried steps actually ran.
+func seedRecord(doc *spec.Document, prior *state.Record, specHash string, hashes map[string]string, resumable map[string]bool) *state.Record {
 	now := time.Now().UTC()
 	rec := &state.Record{
 		APIVersion:   state.RecordAPIVersion,
 		SpecName:     doc.Metadata.Name,
-		SpecHash:     hash,
+		SpecHash:     specHash,
 		KhookVersion: Version,
 		RunStatus:    state.RunStatusRunning,
 		StartedAt:    now,
 		UpdatedAt:    now,
 	}
-	carry := usablePrior(prior, hash)
 	for i := range doc.Steps {
 		step := &doc.Steps[i]
-		if carry {
-			if sr := prior.Step(step.Name); sr != nil && sr.Status == string(engine.StatusOK) {
-				rec.Steps = append(rec.Steps, *sr)
-				continue
-			}
+		if resumable[step.Name] {
+			rec.Steps = append(rec.Steps, *prior.Step(step.Name))
+			continue
 		}
-		rec.Steps = append(rec.Steps, state.StepRecord{Name: step.Name, Type: step.Type()})
+		rec.Steps = append(rec.Steps, state.StepRecord{Name: step.Name, Type: step.Type(), InputHash: hashes[step.Name]})
 	}
 	return rec
 }

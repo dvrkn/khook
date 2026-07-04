@@ -18,8 +18,9 @@
 #      plan --diff reports no changes
 #   9. run-state record (state:): a failed run journals to the record Secret,
 #      an identical re-run resumes past the completed step (proven by an
-#      out-of-band deletion staying deleted), a changed variable forces a
-#      fresh run, khook status reads the record, and a foreign same-name
+#      out-of-band deletion staying deleted), a changed variable re-runs
+#      only the step whose inputs changed (the unchanged steps still
+#      resume), khook status reads the record, and a foreign same-name
 #      Secret is refused
 #
 # Usage:
@@ -291,9 +292,9 @@ managed="$(k -n "${STATE_NS}" get secret "${STATE_SECRET}" -o jsonpath='{.metada
 [[ "${managed}" == "khook" ]] || fail "state secret should carry the managed-by label, got '${managed}'"
 record="$(state_record)"
 grep -q '"runStatus":"failed"' <<<"${record}" || fail "record should mark the run failed, got: ${record}"
-grep -q '"name":"step-a","type":"apply","status":"ok"' <<<"${record}" || fail "record should mark step-a ok, got: ${record}"
-grep -q '"name":"step-b","type":"wait","status":"failed"' <<<"${record}" || fail "record should mark step-b failed, got: ${record}"
-grep -q '"name":"step-c","type":"apply","status":"skipped"' <<<"${record}" || fail "record should mark step-c skipped, got: ${record}"
+grep -Eq '"name":"step-a","type":"apply","inputHash":"sha256:[^"]+","status":"ok"' <<<"${record}" || fail "record should mark step-a ok (with an input hash), got: ${record}"
+grep -Eq '"name":"step-b","type":"wait",[^}]*"status":"failed"' <<<"${record}" || fail "record should mark step-b failed, got: ${record}"
+grep -Eq '"name":"step-c","type":"apply",[^}]*"status":"skipped"' <<<"${record}" || fail "record should mark step-c skipped, got: ${record}"
 
 status_out="$(state_spec status)"
 grep -q "run:     failed" <<<"${status_out}" || fail "status should report the failed run, got: ${status_out}"
@@ -313,13 +314,17 @@ k -n "${STATE_NS}" get configmap state-marker >/dev/null 2>&1 && fail "state-mar
 k -n "${STATE_NS}" get configmap state-final >/dev/null || fail "step-c did not run on the resumed attempt"
 record="$(state_record)"
 grep -q '"runStatus":"ok"' <<<"${record}" || fail "record should mark the resumed run ok, got: ${record}"
-grep -q '"name":"step-a","type":"apply","status":"ok"' <<<"${record}" || fail "record must keep step-a ok after the resume, got: ${record}"
+grep -Eq '"name":"step-a","type":"apply",[^}]*"status":"ok"' <<<"${record}" || fail "record must keep step-a ok after the resume, got: ${record}"
 
-log "state: a changed variable (hash mismatch) forces a fresh run"
+log "state: a changed step re-runs while unchanged steps resume"
 apply_out="$(state_spec apply --set MARKER=changed)"
-grep -q "succeeded in a previous run" <<<"${apply_out}" && fail "hash mismatch must not resume, got: ${apply_out}"
 made_by="$(k -n "${STATE_NS}" get configmap state-marker -o jsonpath='{.data.made-by}')"
-[[ "${made_by}" == "changed" ]] || fail "fresh run should recreate state-marker with the new value, got '${made_by}'"
+[[ "${made_by}" == "changed" ]] || fail "changed step-a should re-run and recreate state-marker with the new value, got '${made_by}'"
+grep -Eq 'step-a[[:space:]]+apply[[:space:]]+ok' <<<"${apply_out}" || fail "changed step-a should re-run, got: ${apply_out}"
+grep -Eq 'step-b[[:space:]]+wait[[:space:]]+skipped' <<<"${apply_out}" || fail "unchanged step-b should resume-skip, got: ${apply_out}"
+grep -Eq 'step-c[[:space:]]+apply[[:space:]]+skipped' <<<"${apply_out}" || fail "unchanged step-c should resume-skip, got: ${apply_out}"
+record="$(state_record)"
+grep -q '"runStatus":"ok"' <<<"${record}" || fail "record should mark the changed-step run ok, got: ${record}"
 
 log "state: a foreign same-name secret is refused"
 FOREIGN_NS="e2e-state-foreign"
