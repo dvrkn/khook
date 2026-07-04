@@ -1,0 +1,31 @@
+# Build artifacts
+bootstrap
+bootstrap.zip
+bootstrap-local
+bootstrap-local-*
+schema.json
+coverage.out
+coverage.html
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+.dev
+CLAUDE.md
+.claude

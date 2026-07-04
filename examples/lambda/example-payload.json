@@ -1,0 +1,9 @@
+{
+  "cluster": {
+    "name": "example-cluster",
+    "region": "us-west-2",
+    "caCertificate": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1J...",
+    "endpoint": "https://....eks.amazonaws.com"
+  },
+  "spec": "apiVersion: khook.dvrkn.com/v1\n..."
+}

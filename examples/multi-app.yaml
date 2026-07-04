@@ -1,0 +1,77 @@
+apiVersion: khook.dvrkn.com/v1
+kind: Khook
+metadata:
+  name: multi-app-demo
+
+defaults:
+  timeout: 10m
+
+steps:
+  - name: create-monitoring-namespace
+    apply:
+      manifests:
+        - inline: |
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: monitoring
+
+  - name: prometheus
+    needs: [create-monitoring-namespace]
+    helm:
+      chart: prometheus
+      repo: https://prometheus-community.github.io/helm-charts
+      version: 25.8.0
+      namespace: monitoring
+      values:
+        server:
+          persistentVolume:
+            enabled: false
+
+  - name: create-app-namespace
+    apply:
+      manifests:
+        - inline: |
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: apps
+
+  - name: deploy-sample-app
+    needs: [create-app-namespace]
+    apply:
+      namespace: apps
+      manifests:
+        - inline: |
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: hello-world
+              namespace: apps
+            spec:
+              replicas: 2
+              selector:
+                matchLabels:
+                  app: hello-world
+              template:
+                metadata:
+                  labels:
+                    app: hello-world
+                spec:
+                  containers:
+                  - name: hello
+                    image: gcr.io/google-samples/hello-app:1.0
+                    ports:
+                    - containerPort: 8080
+        - inline: |
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: hello-world
+              namespace: apps
+            spec:
+              selector:
+                app: hello-world
+              ports:
+              - port: 80
+                targetPort: 8080

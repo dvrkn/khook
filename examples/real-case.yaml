@@ -1,0 +1,111 @@
+apiVersion: khook.dvrkn.com/v1
+kind: Khook
+metadata:
+  name: real-case-cluster
+
+defaults:
+  onError: fail
+
+steps:
+  - name: cilium
+    helm:
+      chart: cilium
+      repo: https://helm.cilium.io/
+      version: 1.18.4
+      namespace: kube-system
+      skipIfInstalled: true
+      atomic: true
+      valuesFrom:
+        - file: ./values/cilium.yaml
+
+  - name: restart-pod-identity-agent
+    needs: [cilium]
+    rollout:
+      restart: daemonset/eks-pod-identity-agent
+      namespace: kube-system
+
+  - name: wait-all-pods-ready
+    needs: [restart-pod-identity-agent]
+    timeout: 5m
+    wait:
+      for: condition=Ready
+      on: pods
+      allNamespaces: true
+
+  - name: external-secrets
+    needs: [cilium]
+    helm:
+      chart: external-secrets
+      repo: https://charts.external-secrets.io
+      version: 1.1.0
+      namespace: external-secrets
+      createNamespace: true
+      skipIfInstalled: true
+      atomic: true
+
+  - name: restart-external-secrets
+    needs: [external-secrets]
+    rollout:
+      restart: deployment/external-secrets
+      namespace: external-secrets
+
+  - name: es-cluster-secret-store
+    needs: [restart-external-secrets]
+    apply:
+      skipIfExists: true
+      manifests:
+        - inline: |
+            apiVersion: external-secrets.io/v1
+            kind: ClusterSecretStore
+            metadata:
+              name: aws-secrets-manager
+            spec:
+              provider:
+                aws:
+                  service: SecretsManager
+                  region: us-east-1
+                  auth:
+                    jwt:
+                      serviceAccountRef:
+                        name: external-secrets
+                        namespace: external-secrets
+
+  - name: argocd
+    needs: [cilium]
+    helm:
+      chart: argo-cd
+      repo: https://argoproj.github.io/argo-helm
+      version: 9.1.4
+      namespace: argocd
+      createNamespace: true
+      skipIfInstalled: true
+      atomic: true
+      values:
+        configs:
+          secret:
+            argocdServerAdminPassword: "$2a$10$9XihPJaud829/kOxs.M3tOx2ZGGVL1/pXhyWKIxnsbgyjfqSX6qNa"
+
+  - name: argocd-root-app
+    needs: [argocd]
+    apply:
+      skipIfExists: true
+      manifests:
+        - inline: |
+            apiVersion: argoproj.io/v1alpha1
+            kind: Application
+            metadata:
+              name: root-app
+              namespace: argocd
+            spec:
+              project: default
+              source:
+                repoURL: https://github.com/your-org/gitops-repo.git
+                targetRevision: HEAD
+                path: apps
+              destination:
+                server: https://kubernetes.default.svc
+                namespace: argocd
+              syncPolicy:
+                automated:
+                  prune: true
+                  selfHeal: true

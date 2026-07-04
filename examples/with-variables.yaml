@@ -1,0 +1,65 @@
+apiVersion: khook.dvrkn.com/v1
+kind: Khook
+metadata:
+  name: variables-demo
+
+# Variables come from env vars prefixed with KHOOK_VAR_ (configurable via
+# --var-prefix), or from CLI --set / --var-file. Precedence: --set > --var-file
+# > prefixed env. ${VAR:-default} falls back when the variable is unset.
+# Example:
+#   KHOOK_VAR_APP_NAME=my-app KHOOK_VAR_NAMESPACE=production \
+#     khook apply -f examples/with-variables.yaml
+
+defaults:
+  timeout: 5m
+
+steps:
+  - name: create-app-namespace
+    apply:
+      manifests:
+        - inline: |
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: ${NAMESPACE}
+              labels:
+                app: ${APP_NAME}
+
+  - name: deploy-application
+    needs: [create-app-namespace]
+    apply:
+      namespace: ${NAMESPACE}
+      manifests:
+        - inline: |
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: ${APP_NAME}
+              namespace: ${NAMESPACE}
+            spec:
+              replicas: ${REPLICAS:-2}
+              selector:
+                matchLabels:
+                  app: ${APP_NAME}
+              template:
+                metadata:
+                  labels:
+                    app: ${APP_NAME}
+                spec:
+                  containers:
+                  - name: app
+                    image: nginx:1.25
+                    ports:
+                    - containerPort: 80
+        - inline: |
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: ${APP_NAME}-service
+              namespace: ${NAMESPACE}
+            spec:
+              selector:
+                app: ${APP_NAME}
+              ports:
+              - port: 80
+                targetPort: 80
