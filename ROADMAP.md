@@ -26,24 +26,7 @@ the [README](README.md); when an item here ships, it moves there.
 
 ---
 
-## Phase 1 — DSL v2 (make the spec expressive enough for real clusters)
-
-*Goal: cover the real bootstrap cases (`examples/real-case.yaml` and beyond)
-without escape hatches.*
-
-- [ ] **Publish the v1 JSON schema**: the schema is generated, committed
-      (`schema/v1/khook.json`), drift-tested, and wired into the examples —
-      what remains is making its URLs live once the repo is public:
-      - [ ] serve `https://khook.io/schema/v1/khook.json` (the schema's `$id`)
-            — the website (`docs/`, Jekyll) already ships the schema at that
-            path (`hack/gen-schema.sh` keeps both copies in sync); what
-            remains is enabling GitHub Pages (main branch, `/docs` folder)
-            with the `khook.io` custom domain.
-      - [ ] submit to the [JSON Schema Store](https://github.com/SchemaStore/schemastore)
-            with a `fileMatch` pattern, which means picking a spec filename
-            convention (`khook.yaml` / `*.khook.yaml`) first.
-
-## Phase 2 — Idempotency, state & resume (make re-runs first-class)
+## Phase 1 — Idempotency, state & resume (make re-runs first-class)
 
 *Goal: a failed bootstrap at step 7/12 is a resume, not a redo.*
 
@@ -56,7 +39,7 @@ without escape hatches.*
       while the whole-spec hash matches.
 - [ ] **`destroy` (stretch)**: reverse-topological teardown for dev clusters.
 
-## Phase 3 — Delivery & integrations (meet users where clusters are created)
+## Phase 2 — Delivery & integrations (meet users where clusters are created)
 
 *Goal: trivially runnable from every place a cluster gets created.*
 
@@ -64,6 +47,17 @@ without escape hatches.*
       (`hack/e2e.sh`), build matrix (linux/darwin, amd64/arm64).
 - [ ] **Release channels**: goreleaser → GitHub Releases (static binaries),
       Homebrew tap, multi-arch container image (GHCR).
+- [ ] **Publish the v1 JSON schema**: the schema is generated, committed
+      (`schema/v1/khook.json`), drift-tested, and wired into the examples —
+      what remains is making its URLs live once the repo is public:
+      - [ ] serve `https://khook.io/schema/v1/khook.json` (the schema's `$id`)
+            — the website (`docs/`, Jekyll) already ships the schema at that
+            path (`hack/gen-schema.sh` keeps both copies in sync); what
+            remains is enabling GitHub Pages (main branch, `/docs` folder)
+            with the `khook.io` custom domain.
+      - [ ] submit to the [JSON Schema Store](https://github.com/SchemaStore/schemastore)
+            with a `fileMatch` pattern, which means picking a spec filename
+            convention (`khook.yaml` / `*.khook.yaml`) first.
 - [ ] **Terraform**: re-establish the Lambda path v0 proved (invocation contract
       sketched in `examples/lambda/example-payload.json`) as a small Terraform
       module wrapping the Lambda — no `null_resource`/`local-exec` — plus docs
@@ -73,7 +67,7 @@ without escape hatches.*
       auth (run as a Job inside the cluster it bootstraps).
 - [ ] **GitHub Action**: `uses: dvrkn/khook-action` — validate on PR, apply on merge.
 
-## Phase 4 — Observability & scale (nice-to-have, demand-driven)
+## Phase 3 — Observability & scale (nice-to-have, demand-driven)
 
 - [ ] OpenTelemetry traces (one span per step — DAG visualizes for free in any
       trace viewer)
@@ -117,14 +111,13 @@ without escape hatches.*
 
 ## Suggested order of attack
 
-1. Phase 1 driven by real specs: take `real-case.yaml`, remove every workaround it
-   needed, and let that dictate which DSL features land first.
-2. Phase 2 before advertising widely — "safe to re-run, resumes on failure" is the
-   core promise of a bootstrapper.
-3. Phases 3–4 as adoption demands (CI early, though — it is cheap and guards
+1. Phase 1 before advertising widely — "safe to re-run, resumes on failure" is the
+   core promise of a bootstrapper, and the shipped `state:` record needs its
+   change-detection half to fully deliver it.
+2. Phases 2–3 as adoption demands (CI early, though — it is cheap and guards
    everything else).
 
-## Open questions (decide before Phase 1)
+## Open questions
 
 - **Multi-cluster in one spec**: out of scope, or a `targets:` concept later?
 - **Lambda payload vs S3**: specs can outgrow the 256 KB invoke limit — accept an
