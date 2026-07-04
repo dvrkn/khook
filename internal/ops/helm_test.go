@@ -2,38 +2,41 @@ package ops
 
 import (
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
-	kubefake "helm.sh/helm/v3/pkg/kube/fake"
-	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/storage"
-	"helm.sh/helm/v3/pkg/storage/driver"
+	"helm.sh/helm/v4/pkg/action"
+	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
+	kubefake "helm.sh/helm/v4/pkg/kube/fake"
+	"helm.sh/helm/v4/pkg/release/common"
+	releasev1 "helm.sh/helm/v4/pkg/release/v1"
+	"helm.sh/helm/v4/pkg/storage"
+	"helm.sh/helm/v4/pkg/storage/driver"
 
 	"github.com/dvrkn/khook/internal/spec"
 )
 
 func memoryConfig(t *testing.T) *action.Configuration {
 	t.Helper()
-	return &action.Configuration{
+	cfg := &action.Configuration{
 		Releases:   storage.Init(driver.NewMemory()),
 		KubeClient: &kubefake.PrintingKubeClient{Out: io.Discard},
-		Log:        func(string, ...any) {},
 	}
+	cfg.SetLogger(slog.DiscardHandler)
+	return cfg
 }
 
-func storedRelease(name string) *release.Release {
-	return &release.Release{
+func storedRelease(name string) *releasev1.Release {
+	return &releasev1.Release{
 		Name:      name,
 		Namespace: "default",
 		Version:   1,
-		Info:      &release.Info{Status: release.StatusDeployed},
-		Chart: &chart.Chart{Metadata: &chart.Metadata{
-			Name: "test", Version: "0.1.0", APIVersion: chart.APIVersionV2,
+		Info:      &releasev1.Info{Status: common.StatusDeployed},
+		Chart: &chartv2.Chart{Metadata: &chartv2.Metadata{
+			Name: "test", Version: "0.1.0", APIVersion: chartv2.APIVersionV2,
 		}},
 	}
 }

@@ -7,11 +7,13 @@ import (
 	"os"
 	"time"
 
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	helmcli "helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/storage/driver"
+	"helm.sh/helm/v4/pkg/action"
+	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
+	"helm.sh/helm/v4/pkg/chart/v2/loader"
+	helmcli "helm.sh/helm/v4/pkg/cli"
+	"helm.sh/helm/v4/pkg/kube"
+	releasev1 "helm.sh/helm/v4/pkg/release/v1"
+	"helm.sh/helm/v4/pkg/storage/driver"
 
 	"github.com/dvrkn/khook/internal/spec"
 )
@@ -60,19 +62,25 @@ func (e *Executor) runHelm(ctx context.Context, step *spec.Step) error {
 		return err
 	}
 
-	// Helm bounds Wait/Atomic with its own timeout; derive it from the
+	// Helm bounds waiting/rollback with its own timeout; derive it from the
 	// step's context so both agree.
 	timeout := spec.DefaultTimeout
 	if deadline, ok := ctx.Deadline(); ok {
 		timeout = time.Until(deadline)
+	}
+	// v4 requires an explicit wait strategy; HookOnly matches v3's
+	// wait=false behavior (only hooks are awaited).
+	waitStrategy := kube.HookOnlyStrategy
+	if op.Wait {
+		waitStrategy = kube.StatusWatcherStrategy
 	}
 
 	if !installed {
 		client := action.NewInstall(cfg)
 		client.ReleaseName = release
 		client.Namespace = namespace
-		client.Atomic = op.Atomic
-		client.Wait = op.Wait
+		client.RollbackOnFailure = op.Atomic
+		client.WaitStrategy = waitStrategy
 		client.Timeout = timeout
 		client.ChartPathOptions = pathOpts
 		e.Log.Info("helm install", "release", release, "chart", op.Chart, "version", op.Version, "namespace", namespace)
@@ -80,14 +88,14 @@ func (e *Executor) runHelm(ctx context.Context, step *spec.Step) error {
 		if err != nil {
 			return fmt.Errorf("installing release %q: %w", release, err)
 		}
-		e.Log.Info("helm installed", "release", rel.Name, "version", rel.Chart.Metadata.Version, "revision", rel.Version)
+		e.logRelease("helm installed", rel)
 		return nil
 	}
 
 	client := action.NewUpgrade(cfg)
 	client.Namespace = namespace
-	client.Atomic = op.Atomic
-	client.Wait = op.Wait
+	client.RollbackOnFailure = op.Atomic
+	client.WaitStrategy = waitStrategy
 	client.Timeout = timeout
 	client.ChartPathOptions = pathOpts
 	e.Log.Info("helm upgrade", "release", release, "chart", op.Chart, "version", op.Version, "namespace", namespace)
@@ -95,18 +103,26 @@ func (e *Executor) runHelm(ctx context.Context, step *spec.Step) error {
 	if err != nil {
 		return fmt.Errorf("upgrading release %q: %w", release, err)
 	}
-	e.Log.Info("helm upgraded", "release", rel.Name, "version", rel.Chart.Metadata.Version, "revision", rel.Version)
+	e.logRelease("helm upgraded", rel)
 	return nil
+}
+
+// logRelease logs the outcome of an install/upgrade. Helm v4 actions return
+// an opaque release.Releaser; today it is always a *releasev1.Release.
+func (e *Executor) logRelease(msg string, rel any) {
+	if r, ok := rel.(*releasev1.Release); ok && r != nil {
+		e.Log.Info(msg, "release", r.Name, "version", r.Chart.Metadata.Version, "revision", r.Version)
+		return
+	}
+	e.Log.Info(msg)
 }
 
 func (e *Executor) helmConfig(namespace string) (*action.Configuration, error) {
 	cfg := new(action.Configuration)
-	logf := func(format string, v ...any) {
-		e.Log.Debug(fmt.Sprintf(format, v...), "component", "helm")
-	}
-	if err := cfg.Init(e.Clients.HelmGetter(namespace), namespace, os.Getenv("HELM_DRIVER"), logf); err != nil {
+	if err := cfg.Init(e.Clients.HelmGetter(namespace), namespace, os.Getenv("HELM_DRIVER")); err != nil {
 		return nil, fmt.Errorf("initializing helm: %w", err)
 	}
+	cfg.SetLogger(e.Log.Handler())
 	return cfg, nil
 }
 
@@ -164,7 +180,7 @@ func mergeMaps(a, b map[string]any) map[string]any {
 	return out
 }
 
-func checkChartInstallable(chrt *chart.Chart) error {
+func checkChartInstallable(chrt *chartv2.Chart) error {
 	switch chrt.Metadata.Type {
 	case "", "application":
 		return nil
