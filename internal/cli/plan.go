@@ -63,6 +63,11 @@ func newPlanCommand(root *rootOptions) *cobra.Command {
 				fmt.Fprintf(out, "\nLevel %d (parallel):\n", i+1)
 				for _, step := range level {
 					fmt.Fprintf(out, "  - %s  [%s] %s\n", step.Name, step.Type(), describeStep(step))
+					if step.Excluded {
+						counts[ops.ActionSkip]++
+						fmt.Fprintf(out, "      plan: %s — when condition is false (%s)\n", ops.ActionSkip, step.When)
+						continue
+					}
 					if executor == nil {
 						continue
 					}

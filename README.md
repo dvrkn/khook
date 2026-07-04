@@ -107,8 +107,10 @@ the bootstrap surface:
 | `wait:` | block until a condition holds (or gone) | `kubectl wait` + `sleep`-and-pray |
 | `rollout:` | restart / await workload rollouts | `kubectl rollout restart/status` |
 
-`${VAR}` / `${VAR:-default}` substitution keeps one spec serving many
-environments — values come from `--set`, `--var-file`, or `KHOOK_VAR_*`
+`${VAR}` / `${VAR:-default}` substitution and `when:` conditionals
+([CEL](https://cel.dev) expressions over the variables, e.g.
+`when: vars.get("ENABLE_ARGOCD", "false") == "true"`) keep one spec serving
+many environments — values come from `--set`, `--var-file`, or `KHOOK_VAR_*`
 environment variables. The full field reference lives in
 [`docs/dsl.md`](docs/dsl.md); working specs in [`examples/`](examples/) —
 [`real-case.yaml`](examples/real-case.yaml) is a production-shaped EKS
@@ -131,8 +133,8 @@ semantics: [`docs/cli.md`](docs/cli.md).
 
 The v1 core is implemented and tested (unit + k3d end-to-end): the five step
 types, DAG engine, variables, and the CLI above. Pre-release — no published
-binaries yet; conditionals (`when:`), OCI charts, resumable runs, and a
-Terraform/Lambda integration are on the [roadmap](roadmap.md).
+binaries yet; OCI charts, resumable runs, and a Terraform/Lambda
+integration are on the [roadmap](roadmap.md).
 
 ## Development
 

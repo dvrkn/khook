@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -125,6 +126,36 @@ func TestRunOnErrorContinue(t *testing.T) {
 	// Dependents of the failed step are skipped.
 	if byName["bottom"].Status != StatusSkipped {
 		t.Errorf("bottom = %s, want skipped", byName["bottom"].Status)
+	}
+}
+
+func TestRunWhenExcludedStepSkipsButSatisfiesNeeds(t *testing.T) {
+	rec := &recorder{}
+	excluded := step("optional")
+	excluded.When = `vars.FLAG == "true"`
+	excluded.Excluded = true
+	r := newTestRunner(spec.Defaults{}, rec.exec)
+	results, err := r.Run(context.Background(), steps(
+		step("top"),
+		excluded,
+		step("dependent", "optional"),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := resultsByName(results)
+	if byName["optional"].Status != StatusSkipped {
+		t.Errorf("optional = %s, want skipped", byName["optional"].Status)
+	}
+	if got := byName["optional"].SkipReason; !strings.Contains(got, "when") {
+		t.Errorf("skip reason = %q, want the when condition mentioned", got)
+	}
+	// The exclusion is deliberate: needs stays satisfied, dependents run.
+	if byName["dependent"].Status != StatusOK {
+		t.Errorf("dependent = %s, want ok", byName["dependent"].Status)
+	}
+	if len(rec.executed) != 2 {
+		t.Fatalf("executed %v, want top and dependent only", rec.executed)
 	}
 }
 

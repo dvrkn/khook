@@ -36,6 +36,9 @@ func TestValidate(t *testing.T) {
 		{"step missing name", func(d *Document) { d.Steps[0].Name = "" }, "name is required"},
 		{"bad step name", func(d *Document) { d.Steps[0].Name = "Bad_Name" }, "must match"},
 		{"negative retries", func(d *Document) { d.Steps[0].Retries = ptrTo(-1) }, "retries"},
+		{"when syntax error", func(d *Document) { d.Steps[0].When = `vars.X ==` }, "when"},
+		{"when not a bool", func(d *Document) { d.Steps[0].When = `vars.X` }, "bool"},
+		{"when unknown identifier", func(d *Document) { d.Steps[0].When = `flag == "on"` }, "undeclared reference"},
 		{
 			"duplicate names",
 			func(d *Document) { d.Steps = append(d.Steps, d.Steps[0]) },

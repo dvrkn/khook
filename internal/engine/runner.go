@@ -104,10 +104,12 @@ func (r *Runner) notify(ev Event) {
 }
 
 // Run executes steps in DAG levels. Within a level steps run in parallel. A
-// step runs only if every step it needs succeeded. When a step fails with
-// onError=fail, steps already running finish, nothing new starts, and every
-// not-yet-run step is reported skipped. The returned error is non-nil if any
-// step failed; results always cover every step.
+// step runs only if every step it needs succeeded. A step excluded by its
+// when: condition is reported skipped but still satisfies needs — the
+// exclusion is deliberate, and needs expresses ordering. When a step fails
+// with onError=fail, steps already running finish, nothing new starts, and
+// every not-yet-run step is reported skipped. The returned error is non-nil
+// if any step failed; results always cover every step.
 func (r *Runner) Run(ctx context.Context, steps []spec.Step) ([]Result, error) {
 	levels, err := Levels(steps)
 	if err != nil {
@@ -121,6 +123,13 @@ func (r *Runner) Run(ctx context.Context, steps []spec.Step) ([]Result, error) {
 	for _, level := range levels {
 		var runnable []*spec.Step
 		for _, step := range level {
+			if step.Excluded {
+				succeeded[step.Name] = true
+				res := Result{Step: step, Status: StatusSkipped, SkipReason: fmt.Sprintf("when condition is false (%s)", step.When)}
+				results = append(results, res)
+				r.notify(Event{Kind: EventDone, Step: step, Result: &res})
+				continue
+			}
 			if reason := r.skipReason(ctx, step, succeeded, stopped); reason != "" {
 				res := Result{Step: step, Status: StatusSkipped, SkipReason: reason}
 				results = append(results, res)

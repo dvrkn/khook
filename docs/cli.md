@@ -61,9 +61,11 @@ live cluster (reads only; plan never mutates anything):
 | `wait:` | `no-op` when the condition already holds, `wait` otherwise (shows how many objects currently match) |
 | `rollout:` | `restart`, `no-op` (rollout already complete), or `wait` |
 
-Steps that can't be assessed yet — e.g. a CRD or namespace an earlier step
-creates, a missing values file — are reported as `unknown` with the reason,
-not treated as errors. A closing `Plan:` line totals the actions. Variables
+A step whose `when:` condition is false is reported `skip` (with the
+condition) without touching the cluster — `--offline` shows it too. Steps
+that can't be assessed yet — e.g. a CRD or namespace an earlier step creates,
+a missing values file — are reported as `unknown` with the reason, not
+treated as errors. A closing `Plan:` line totals the actions. Variables
 are resolved, so the plan shows final values.
 
 `--diff` adds kubectl-diff-style unified object diffs under each step that
@@ -118,8 +120,10 @@ Steps run in topologically sorted parallel levels. Per-step `timeout` bounds
 each attempt; `retries`/`retryDelay` control re-attempts; `onError: fail`
 (default) lets running steps finish but starts nothing new, `onError:
 continue` keeps scheduling other branches (dependents of the failed step are
-still skipped). Skipped steps and the reason always appear in the summary.
-Ctrl-C cancels the run; steps not yet started are reported skipped.
+still skipped). A step whose `when:` condition is false is skipped but still
+satisfies its dependents' `needs` (see [`docs/dsl.md`](dsl.md)). Skipped
+steps and the reason always appear in the summary. Ctrl-C cancels the run;
+steps not yet started are reported skipped.
 
 Re-running the same spec is safe: `helm:` upgrades instead of installing,
 `apply:` patches existing resources, `delete:` treats absent resources as

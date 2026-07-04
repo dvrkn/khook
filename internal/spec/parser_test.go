@@ -130,3 +130,46 @@ func TestParseExamples(t *testing.T) {
 		}
 	}
 }
+
+func TestParseWhenSetsExcluded(t *testing.T) {
+	src := `
+apiVersion: khook.dvrkn.com/v1
+kind: Khook
+metadata:
+  name: test
+steps:
+  - name: always
+    apply:
+      manifests: [{inline: "x"}]
+  - name: enabled
+    when: vars.FLAG == "true"
+    apply:
+      manifests: [{inline: "x"}]
+  - name: disabled
+    when: vars.get("OTHER", "false") == "true"
+    needs: [enabled]
+    apply:
+      manifests: [{inline: "x"}]
+`
+	doc, err := Parse([]byte(src), map[string]string{"FLAG": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"always": false, "enabled": false, "disabled": true}
+	for _, step := range doc.Steps {
+		if step.Excluded != want[step.Name] {
+			t.Errorf("step %q: Excluded = %v, want %v", step.Name, step.Excluded, want[step.Name])
+		}
+	}
+}
+
+func TestParseWhenUnsetVariableFails(t *testing.T) {
+	src := strings.Replace(minimalSpec, "    apply:", "    when: vars.MISSING == \"true\"\n    apply:", 1)
+	_, err := Parse([]byte(src), nil)
+	if err == nil || !strings.Contains(err.Error(), "no such key") {
+		t.Fatalf("want no-such-key error, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), `step "ns"`) {
+		t.Errorf("error should name the step, got %v", err)
+	}
+}

@@ -44,6 +44,19 @@ func Parse(raw []byte, vars map[string]string) (*Document, error) {
 	if err := Validate(&doc); err != nil {
 		return nil, err
 	}
+	// when: conditions depend only on variables, so they are decided here,
+	// once, and carried on the steps.
+	for i := range doc.Steps {
+		step := &doc.Steps[i]
+		if step.When == "" {
+			continue
+		}
+		ok, err := EvalWhen(step.When, vars)
+		if err != nil {
+			return nil, fmt.Errorf("step %q: when: %w", step.Name, err)
+		}
+		step.Excluded = !ok
+	}
 	return &doc, nil
 }
 

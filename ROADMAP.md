@@ -31,13 +31,12 @@ the [README](README.md); when an item here ships, it moves there.
 *Goal: cover the real bootstrap cases (`examples/real-case.yaml` and beyond)
 without escape hatches.*
 
-- [ ] **Conditionals**: `when:` expression on steps (variable-based, e.g.
-      `when: ${ENABLE_ARGOCD} == "true"`), so one spec serves many environments.
 - [ ] **Spec composability**: multiple `-f` files / a directory of specs merged
-      in order; `needs` across files. Deliberately deferred until conditionals
-      and variable sources settle — merge semantics (`defaults:` conflicts,
-      duplicate step names, cross-file validation) depend on both, and `when:`
-      reduces the need to split specs per environment in the first place.
+      in order; `needs` across files. Deliberately deferred until richer
+      variable sources settle — merge semantics (`defaults:` conflicts,
+      duplicate step names, cross-file validation) depend on them, and the
+      shipped `when:` conditionals already reduce the need to split specs per
+      environment in the first place.
 - [ ] **Richer variable sources**: files and cloud secrets (AWS SSM / Secrets
       Manager) — pluggable resolver chain.
 - [ ] **Helm depth**: OCI registry charts (`oci://`), local chart paths/tarballs,

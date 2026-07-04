@@ -9,6 +9,9 @@ metadata:
 # Example:
 #   KHOOK_VAR_APP_NAME=my-app KHOOK_VAR_NAMESPACE=production \
 #     khook apply -f examples/with-variables.yaml
+#
+# Steps can be conditional: when: holds a CEL expression over the same
+# variables (as the map `vars`); false skips the step. See docs/dsl.md.
 
 defaults:
   timeout: 5m
@@ -63,3 +66,30 @@ steps:
               ports:
               - port: 80
                 targetPort: 80
+
+  # Only runs with --set EXPOSE_INGRESS=true (or KHOOK_VAR_EXPOSE_INGRESS=true);
+  # otherwise reported skipped. deploy-application runs either way — a step
+  # excluded by when: still satisfies needs.
+  - name: expose-ingress
+    when: vars.get("EXPOSE_INGRESS", "false") == "true"
+    needs: [deploy-application]
+    apply:
+      namespace: ${NAMESPACE}
+      manifests:
+        - inline: |
+            apiVersion: networking.k8s.io/v1
+            kind: Ingress
+            metadata:
+              name: ${APP_NAME}
+              namespace: ${NAMESPACE}
+            spec:
+              rules:
+                - http:
+                    paths:
+                      - path: /
+                        pathType: Prefix
+                        backend:
+                          service:
+                            name: ${APP_NAME}-service
+                            port:
+                              number: 80

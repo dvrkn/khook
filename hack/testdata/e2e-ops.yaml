@@ -84,3 +84,32 @@ steps:
       on: pods
       namespace: ${OPS_NAMESPACE}
       selector: app=echo
+
+  # when: coverage — CONDITIONAL_EXTRA is never set in the E2E, so this step
+  # must be skipped and its configmap never created ...
+  - name: conditional-extra
+    when: vars.get("CONDITIONAL_EXTRA", "false") == "true"
+    needs: [workload]
+    apply:
+      namespace: ${OPS_NAMESPACE}
+      manifests:
+        - inline: |
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: conditional-extra
+              namespace: ${OPS_NAMESPACE}
+
+  # ... while a dependent without its own when: still runs (an excluded step
+  # satisfies needs).
+  - name: conditional-after
+    needs: [conditional-extra]
+    apply:
+      namespace: ${OPS_NAMESPACE}
+      manifests:
+        - inline: |
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: conditional-after
+              namespace: ${OPS_NAMESPACE}

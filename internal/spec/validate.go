@@ -76,6 +76,11 @@ func Validate(doc *Document) error {
 		if err := validateOnError(step.OnError); err != nil {
 			addf("%s: %v", where, err)
 		}
+		if step.When != "" {
+			if err := CheckWhen(step.When); err != nil {
+				addf("%s: when: %v", where, err)
+			}
+		}
 		if step.Retries != nil && *step.Retries < 0 {
 			addf("%s: retries must not be negative", where)
 		}

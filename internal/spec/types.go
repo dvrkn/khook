@@ -78,8 +78,11 @@ var (
 // Step is one node of the DAG. Exactly one action key (Helm, Apply, Delete,
 // Wait, Rollout) must be set.
 type Step struct {
-	Name       string    `json:"name"`
-	Needs      []string  `json:"needs,omitempty"`
+	Name  string   `json:"name"`
+	Needs []string `json:"needs,omitempty"`
+	// When is a CEL expression over the merged variables (see when.go);
+	// false excludes the step from the run.
+	When       string    `json:"when,omitempty"`
 	Timeout    *Duration `json:"timeout,omitempty"`
 	Retries    *int      `json:"retries,omitempty"`
 	RetryDelay *Duration `json:"retryDelay,omitempty"`
@@ -90,6 +93,10 @@ type Step struct {
 	Delete  *DeleteOp  `json:"delete,omitempty"`
 	Wait    *WaitOp    `json:"wait,omitempty"`
 	Rollout *RolloutOp `json:"rollout,omitempty"`
+
+	// Excluded records a false When result. Set by Parse, read by the
+	// engine and plan; never part of the spec itself.
+	Excluded bool `json:"-"`
 }
 
 // Type returns the step's action type name ("helm", "apply", ...), or "" if

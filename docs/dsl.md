@@ -48,6 +48,7 @@ Fallbacks for the per-step fields of the same name.
 steps:
   - name: cilium          # required, unique, DNS-label-ish ([a-z0-9-])
     needs: [other-step]   # optional; DAG edges, must reference existing names
+    when: vars.ENV == "prod"   # optional; CEL condition, see below
     timeout: 10m          # optional, overrides defaults
     retries: 2            # optional, overrides defaults
     retryDelay: 30s       # optional, overrides defaults
@@ -64,7 +65,43 @@ in parallel levels; a step runs only when all `needs` succeeded. If a step
 fails with `onError: fail`, running steps finish, nothing new starts, and every
 not-yet-run step is reported `skipped`.
 
-**(roadmap)** `when:` conditional on any step.
+## `when:` — conditional steps
+
+`when:` holds a [CEL](https://cel.dev) expression; the step runs only when it
+evaluates to `true`. Conditions see the merged variable map and nothing else —
+they are decided once, at spec load time, before anything touches the cluster
+(`plan` shows the outcome, offline included).
+
+The expression environment, on top of the CEL standard library (`&&`, `||`,
+`!`, `==`, `in`, `startsWith`, `endsWith`, `contains`, `matches`, ternaries):
+
+| Expression | Meaning |
+|---|---|
+| `vars` | the merged variable map; every value is a string |
+| `vars.NAME` | the variable's value — an error if unset (like a bare `${NAME}`) |
+| `vars.get("NAME", "default")` | the variable's value, or the default when unset |
+| `has(vars.NAME)` | whether the variable is set |
+
+The expression must type-check to a bool; anything else is a validation
+error.
+
+```yaml
+steps:
+  - name: argocd
+    when: vars.get("ENABLE_ARGOCD", "false") == "true"
+    helm: { ... }
+```
+
+Semantics:
+
+- **All variable values are strings** — compare against `"true"`, not `true`.
+- **Write `vars.NAME`, not `${NAME}`**: `${NAME}` is substituted textually
+  before parsing, so it would splice the raw value into the expression as
+  bare tokens instead of a string.
+- A step excluded by `when:` is reported `skipped` but **satisfies `needs`** —
+  `needs` expresses ordering, and the exclusion is deliberate (a *failed*
+  step, by contrast, does block its dependents). Dependents that should be
+  excluded together need their own `when:`.
 
 ## `helm:` — install or upgrade a chart release
 

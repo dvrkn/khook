@@ -148,8 +148,8 @@ status="$(k -n "${INGRESS_NS}" get secret "sh.helm.release.v1.ingress-nginx.v${r
   -o jsonpath='{.metadata.labels.status}')"
 [[ "${status}" == "deployed" ]] || fail "helm release status after re-apply: ${status}, want deployed"
 
-# --- wait / rollout / delete coverage ----------------------------------------
-log "khook apply hack/testdata/e2e-ops.yaml (wait/rollout/delete)"
+# --- wait / rollout / delete / when coverage ----------------------------------
+log "khook apply hack/testdata/e2e-ops.yaml (wait/rollout/delete/when)"
 "${KHOOK}" apply \
   --kubeconfig "${KUBECONFIG_FILE}" \
   -f "${REPO_ROOT}/hack/testdata/e2e-ops.yaml" \
@@ -157,6 +157,8 @@ log "khook apply hack/testdata/e2e-ops.yaml (wait/rollout/delete)"
 
 k -n "${OPS_NS}" get configmap doomed >/dev/null 2>&1 && fail "configmap doomed should have been deleted"
 k -n "${OPS_NS}" get deployment echo >/dev/null 2>&1 && fail "deployment echo should have been deleted"
+k -n "${OPS_NS}" get configmap conditional-extra >/dev/null 2>&1 && fail "configmap conditional-extra should not exist (when: is false)"
+k -n "${OPS_NS}" get configmap conditional-after >/dev/null || fail "configmap conditional-after missing (excluded step must satisfy needs)"
 
 # --- failure semantics: a failing step must exit 1 and skip dependents -------
 log "asserting failure exit code"

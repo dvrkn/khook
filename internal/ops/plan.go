@@ -26,7 +26,7 @@ const (
 	ActionDelete    Action = "delete"    // delete: matching resources exist
 	ActionRestart   Action = "restart"   // rollout restart
 	ActionWait      Action = "wait"      // wait / rollout status: condition not met yet
-	ActionSkip      Action = "skip"      // a skipIf* field short-circuits the step
+	ActionSkip      Action = "skip"      // a skipIf* field or a false when: short-circuits the step
 	ActionNone      Action = "no-op"     // nothing to do (already absent / already satisfied)
 	ActionUnknown   Action = "unknown"   // cannot assess against the current cluster
 )
