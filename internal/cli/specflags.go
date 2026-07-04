@@ -12,10 +12,18 @@ import (
 
 // specFlags are the flags shared by every command that reads a spec file.
 type specFlags struct {
-	file      string
-	sets      []string
-	varFile   string
-	varPrefix string
+	file         string
+	sets         []string
+	varFile      string
+	varPrefix    string
+	secretPrefix string
+
+	// redact receives the values of secret-prefixed variables so they are
+	// masked in all output; set by the command constructors.
+	redact *redactor
+	// secretNames holds the variable names loaded via the secret prefix;
+	// populated by variables(), consumed by load() for derived-value tracking.
+	secretNames map[string]bool
 }
 
 func (f *specFlags) register(cmd *cobra.Command) {
@@ -23,17 +31,23 @@ func (f *specFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&f.sets, "set", nil, "set a variable NAME=value (repeatable, highest precedence)")
 	cmd.Flags().StringVar(&f.varFile, "var-file", "", "YAML file with a flat NAME: value variable map")
 	cmd.Flags().StringVar(&f.varPrefix, "var-prefix", spec.DefaultVarPrefix, "environment variable prefix consumed as spec variables")
+	cmd.Flags().StringVar(&f.secretPrefix, "secret-prefix", spec.DefaultSecretPrefix, "environment variable prefix consumed as secret variables (values redacted in output)")
 	_ = cmd.MarkFlagRequired("file")
 }
 
-// load merges variable sources (--set > --var-file > prefixed env) and
-// parses + validates the spec file. Failures are validation errors (exit 2).
+// load merges variable sources (--set > --var-file > secret env > prefixed
+// env) and parses + validates the spec file. Failures are validation errors
+// (exit 2).
 func (f *specFlags) load() (*spec.Document, error) {
 	vars, err := f.variables()
 	if err != nil {
 		return nil, validationErr(err)
 	}
-	doc, err := spec.ParseFile(f.file, vars)
+	doc, derived, err := spec.ParseFileTracking(f.file, vars, f.secretNames)
+	// Pipeline outputs of secret variables (e.g. ${TOKEN|b64enc}) are as
+	// sensitive as the raw values; register them before the error can be
+	// printed — parse errors may quote substituted content.
+	f.redact.Add(derived...)
 	if err != nil {
 		return nil, validationErr(err)
 	}
@@ -42,6 +56,13 @@ func (f *specFlags) load() (*spec.Document, error) {
 
 func (f *specFlags) variables() (map[string]string, error) {
 	envVars := spec.VarsFromEnviron(os.Environ(), f.varPrefix)
+
+	secretVars := spec.VarsFromEnviron(os.Environ(), f.secretPrefix)
+	f.secretNames = map[string]bool{}
+	for name, v := range secretVars {
+		f.secretNames[name] = true
+		f.redact.Add(v)
+	}
 
 	fileVars := map[string]string{}
 	if f.varFile != "" {
@@ -74,5 +95,5 @@ func (f *specFlags) variables() (map[string]string, error) {
 		setVars[name] = value
 	}
 
-	return spec.MergeVars(envVars, fileVars, setVars), nil
+	return spec.MergeVars(envVars, secretVars, fileVars, setVars), nil
 }

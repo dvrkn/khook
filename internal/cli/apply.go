@@ -17,7 +17,7 @@ import (
 )
 
 func newApplyCommand(root *rootOptions) *cobra.Command {
-	flags := &specFlags{}
+	flags := &specFlags{redact: root.redact}
 	var output string
 	cmd := &cobra.Command{
 		Use:   "apply",
@@ -46,7 +46,7 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 			// display — unless the user explicitly picked a level.
 			interactive := output == "text" && stdoutIsTTY()
 			if interactive && !root.logLevelSet {
-				if quiet, err := newLogger("warn", root.logFormat); err == nil {
+				if quiet, err := newLogger("warn", root.logFormat, root.redact.Wrap(os.Stderr)); err == nil {
 					root.log = quiet
 					slog.SetDefault(quiet)
 				}
@@ -55,9 +55,10 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 			executor := ops.NewExecutor(clients, root.log)
 			runner := engine.NewRunner(doc.Defaults, executor.Execute, root.log)
 
+			stdout := root.redact.Wrap(os.Stdout)
 			var prog *progress
 			if interactive {
-				prog = newProgress(os.Stdout, levels)
+				prog = newProgress(stdout, levels)
 				runner.OnEvent = prog.Handle
 				prog.Start()
 			} else {
@@ -70,11 +71,11 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 			case interactive:
 				prog.Stop(results)
 			case output == "json":
-				if err := printJSONResults(os.Stdout, doc.Metadata.Name, results, runErr); err != nil {
+				if err := printJSONResults(stdout, doc.Metadata.Name, results, runErr); err != nil {
 					return executionErr(err)
 				}
 			default:
-				printSummary(results)
+				printSummary(stdout, results)
 			}
 			if runErr != nil {
 				return executionErr(runErr)
@@ -87,8 +88,8 @@ func newApplyCommand(root *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func printSummary(results []engine.Result) {
-	w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
+func printSummary(out io.Writer, results []engine.Result) {
+	w := tabwriter.NewWriter(out, 2, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "STEP\tTYPE\tSTATUS\tATTEMPTS\tDURATION\tDETAIL")
 	for _, res := range results {
 		detail := ""

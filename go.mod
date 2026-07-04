@@ -3,6 +3,7 @@ module github.com/dvrkn/khook
 go 1.26.4
 
 require (
+	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/google/cel-go v0.28.1
 	github.com/invopop/jsonschema v0.14.0
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
@@ -25,7 +26,6 @@ require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
-	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect

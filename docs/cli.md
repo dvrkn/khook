@@ -20,10 +20,23 @@ loading rules (`KUBECONFIG`, `~/.kube/config`).
 | `--set NAME=value` | set a variable (repeatable) |
 | `--var-file vars.yaml` | flat `NAME: value` YAML map |
 | `--var-prefix` | env-var prefix consumed as variables (default `KHOOK_VAR_`) |
+| `--secret-prefix` | env-var prefix consumed as **secret** variables (default `KHOOK_SECRET_`) |
 
-Variable precedence: `--set` > `--var-file` > prefixed env >
+Variable precedence: `--set` > `--var-file` > secret env > prefixed env >
 `${NAME:-default}` written in the spec. A `${NAME}` with no source and no
 default fails validation, reporting **all** missing variables at once.
+
+**Secret variables**: `KHOOK_SECRET_TOKEN=x` behaves exactly like
+`KHOOK_VAR_TOKEN=x` (it resolves `${TOKEN}`), but the value is additionally
+masked as `***` in everything khook prints — logs, `plan` output, `plan
+--diff` rendered manifests, summaries, and error messages. Sprig pipeline
+outputs of secret variables (e.g. `${TOKEN|b64enc}`, see `docs/dsl.md`) are
+masked the same way. Masking applies
+only to khook's own output; the substituted value still reaches the cluster,
+and anything that reads the created resources can see it. Masking is a
+textual best-effort (values split across lines in rendered YAML may not
+match); prefer keeping secrets out of specs entirely (external-secrets) and
+reserve this for bootstrap-time secrets.
 
 ## Commands
 

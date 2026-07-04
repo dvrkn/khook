@@ -4,9 +4,11 @@ metadata:
   name: variables-demo
 
 # Variables come from env vars prefixed with KHOOK_VAR_ (configurable via
-# --var-prefix), or from CLI --set / --var-file. Precedence: --set > --var-file
-# > prefixed env. ${VAR:-default} falls back when the variable is unset.
-# Example:
+# --var-prefix; KHOOK_SECRET_ additionally redacts the value from output), or
+# from CLI --set / --var-file. Precedence: --set > --var-file > secret env >
+# prefixed env. ${VAR:-default} falls back when the variable is unset, and
+# values can be piped through sprig functions helm-style:
+# ${APP_NAME | lower | trunc 63}. Example:
 #   KHOOK_VAR_APP_NAME=my-app KHOOK_VAR_NAMESPACE=production \
 #     khook apply -f examples/with-variables.yaml
 #
@@ -26,7 +28,7 @@ steps:
             metadata:
               name: ${NAMESPACE}
               labels:
-                app: ${APP_NAME}
+                app: ${APP_NAME | lower | trunc 63}
 
   - name: deploy-application
     needs: [create-app-namespace]

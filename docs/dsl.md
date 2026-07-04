@@ -24,12 +24,51 @@ hold any scalar). Sources, by precedence:
 
 1. CLI `--set NAME=value`
 2. CLI `--var-file vars.yaml` (flat `NAME: value` map)
-3. Environment variables prefixed `KHOOK_VAR_` (`KHOOK_VAR_FOO` → `${FOO}`);
+3. Environment variables prefixed `KHOOK_SECRET_` (`--secret-prefix` to
+   override) — same substitution as below, but the value is redacted from all
+   khook output (logs, plan, diff, errors); see `docs/cli.md`
+4. Environment variables prefixed `KHOOK_VAR_` (`KHOOK_VAR_FOO` → `${FOO}`);
    prefix configurable with `--var-prefix`
-4. `${NAME:-default}` fallback written in the spec
+5. `${NAME:-default}` fallback written in the spec
 
 A `${NAME}` with no source and no default is a validation error; all missing
 variables are reported at once.
+
+### Pipelines — sprig functions on values
+
+A reference can pipe the resolved value through
+[sprig](https://github.com/Masterminds/sprig) functions, helm-template style:
+
+```yaml
+metadata:
+  name: ${APP | lower | trunc 63}
+stringData:
+  tokenB64: ${TOKEN | b64enc}
+timeout: ${WINDOW:-5|printf "%sm"}     # default applies first, then the pipes
+```
+
+Grammar: `${NAME}`, `${NAME:-default}`, `${NAME|pipeline}`,
+`${NAME:-default|pipeline}`. The pipeline is ordinary sprig — `fn`, `fn arg`,
+chained with `|` — applied to the value (helm's `.` | pipeline form). Rules:
+
+- **Only the pipeline text is templated** — it is spec-authored. Values are
+  data, never parsed as templates, and the document itself never goes through
+  a template engine (`{{ }}` in embedded Argo/Helm manifests stays untouched).
+- **Hermetic function set**: sprig's hermetic map — no `env`/`expandenv`
+  (would bypass the `KHOOK_VAR_` isolation), no network, and nothing
+  nondeterministic (`now`, `rand*`, `uuidv4`, certificate/password
+  generators): substitution must produce the same spec for `plan` and
+  `apply`.
+- **Strict missing still applies**: `${NAME|b64enc}` with `NAME` unset is a
+  missing-variable error, pipeline or not. Use `:-` for fallbacks
+  (`${NAME:-dev|upper}`); sprig's `default` only sees empty strings, not
+  unset names.
+- A pipeline cannot contain `}`, and a `:-default` combined with a pipeline
+  cannot contain `|` (use sprig `default`/`replace` inside the pipeline for
+  such values).
+- Pipeline outputs of secret variables (`KHOOK_SECRET_*`) are registered for
+  output redaction alongside the raw values — `${TOKEN|b64enc}` is masked in
+  logs, plan, and diff just like `${TOKEN}`.
 
 ## `defaults:`
 

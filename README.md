@@ -108,14 +108,20 @@ the bootstrap surface:
 | `rollout:` | restart / await workload rollouts | `kubectl rollout restart/status` |
 | `job:` | run a container to completion in-cluster | one-off `kubectl run` / bash scripts |
 
-`${VAR}` / `${VAR:-default}` substitution and `when:` conditionals
+`${VAR}` / `${VAR:-default}` substitution — with optional
+[sprig](https://github.com/Masterminds/sprig) pipelines on values, helm-style
+(`${APP | lower | trunc 63}`, hermetic function set) — and `when:` conditionals
 ([CEL](https://cel.dev) expressions over the variables, e.g.
 `when: vars.get("ENABLE_ARGOCD", "false") == "true"`) keep one spec serving
 many environments — values come from `--set`, `--var-file`, or `KHOOK_VAR_*`
-environment variables. The full field reference lives in
+environment variables; `KHOOK_SECRET_*` works the same but redacts the value
+from all khook output. The full field reference lives in
 [`docs/dsl.md`](docs/dsl.md); working specs in [`examples/`](examples/) —
 [`real-case.yaml`](examples/real-case.yaml) is a production-shaped EKS
-bootstrap (CNI swap, external-secrets, ArgoCD handoff).
+bootstrap (CNI swap, external-secrets, ArgoCD handoff), and
+[`localenv.yaml`](examples/localenv.yaml) is a k3d/kind local environment
+(optional Cilium, Argo CD at `argocd.localhost`, kube-prometheus-stack with
+Grafana at `grafana.localhost`).
 
 ## CLI
 

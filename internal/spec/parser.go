@@ -17,32 +17,40 @@ import (
 // DSL has a field literally named "on" (wait.on): YAML 1.1 parsers resolve
 // the unquoted key `on` to boolean true, yaml.v3 keeps it a string.
 func Parse(raw []byte, vars map[string]string) (*Document, error) {
-	substituted, err := Substitute(raw, vars)
+	doc, _, err := ParseTracking(raw, vars, nil)
+	return doc, err
+}
+
+// ParseTracking is Parse plus derived-value tracking (see
+// SubstituteTracking): outputs of ${NAME|pipeline} references whose NAME is
+// in track are returned for redaction registration.
+func ParseTracking(raw []byte, vars map[string]string, track map[string]bool) (*Document, []string, error) {
+	substituted, derived, err := SubstituteTracking(raw, vars, track)
 	if err != nil {
-		return nil, err
+		return nil, derived, err
 	}
 
 	var tree any
 	if err := yamlv3.Unmarshal(substituted, &tree); err != nil {
-		return nil, fmt.Errorf("parsing spec: %w", err)
+		return nil, derived, fmt.Errorf("parsing spec: %w", err)
 	}
 	tree, err = normalizeJSON(tree)
 	if err != nil {
-		return nil, fmt.Errorf("parsing spec: %w", err)
+		return nil, derived, fmt.Errorf("parsing spec: %w", err)
 	}
 	jsonBytes, err := json.Marshal(tree)
 	if err != nil {
-		return nil, fmt.Errorf("parsing spec: %w", err)
+		return nil, derived, fmt.Errorf("parsing spec: %w", err)
 	}
 
 	var doc Document
 	decoder := json.NewDecoder(bytes.NewReader(jsonBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&doc); err != nil {
-		return nil, fmt.Errorf("parsing spec: %w", err)
+		return nil, derived, fmt.Errorf("parsing spec: %w", err)
 	}
 	if err := Validate(&doc); err != nil {
-		return nil, err
+		return nil, derived, err
 	}
 	// when: conditions depend only on variables, so they are decided here,
 	// once, and carried on the steps.
@@ -53,11 +61,11 @@ func Parse(raw []byte, vars map[string]string) (*Document, error) {
 		}
 		ok, err := EvalWhen(step.When, vars)
 		if err != nil {
-			return nil, fmt.Errorf("step %q: when: %w", step.Name, err)
+			return nil, derived, fmt.Errorf("step %q: when: %w", step.Name, err)
 		}
 		step.Excluded = !ok
 	}
-	return &doc, nil
+	return &doc, derived, nil
 }
 
 // normalizeJSON makes a yaml.v3 value JSON-encodable: map keys become
@@ -137,13 +145,23 @@ func DecodeYAMLMap(raw []byte) (map[string]any, error) {
 
 // ParseFile reads and parses a spec file.
 func ParseFile(path string, vars map[string]string) (*Document, error) {
+	doc, _, err := ParseFileTracking(path, vars, nil)
+	return doc, err
+}
+
+// ParseFileTracking reads and parses a spec file with derived-value tracking
+// (see SubstituteTracking).
+func ParseFileTracking(path string, vars map[string]string, track map[string]bool) (*Document, []string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading spec: %w", err)
+		return nil, nil, fmt.Errorf("reading spec: %w", err)
 	}
-	doc, err := Parse(raw, vars)
+	doc, derived, err := ParseTracking(raw, vars, track)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		// derived survives the error: post-substitution failures embed
+		// substituted content in their messages, so the caller must be able
+		// to register the derivations before printing anything.
+		return nil, derived, fmt.Errorf("%s: %w", path, err)
 	}
-	return doc, nil
+	return doc, derived, nil
 }

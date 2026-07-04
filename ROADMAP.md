@@ -37,8 +37,11 @@ without escape hatches.*
       duplicate step names, cross-file validation) depend on them, and the
       shipped `when:` conditionals already reduce the need to split specs per
       environment in the first place.
-- [ ] **Richer variable sources**: files and cloud secrets (AWS SSM / Secrets
-      Manager) — pluggable resolver chain.
+- [ ] **In-spec variable resolvers** (deferred): cloud secrets (AWS SSM /
+      Secrets Manager) via a `varSources:` pluggable resolver chain. Variables
+      are env-first (`KHOOK_VAR_*` / `KHOOK_SECRET_*`, the wrapper fetches
+      values); build this only if a wrapper-less deployment (Lambda mode)
+      demands it.
 - [ ] **Helm depth**: OCI registry charts (`oci://`), local chart paths/tarballs,
       `- url:` in `valuesFrom`, `reuseValues`, uninstall action, private repo
       auth (basic + ECR).
@@ -109,7 +112,7 @@ without escape hatches.*
 - **Not a GitOps engine.** No watch loops, no drift reconciliation — install Argo/Flux and hand off.
 - **Not a package manager.** No chart authoring, no chart repository hosting.
 - **Not a cluster provisioner.** Terraform/eksctl/CAPI create the cluster; we start where they stop.
-- **No templating language in the DSL** (no embedded Go templates/Jinja). Variables + `when:` conditionals only; complexity beyond that belongs in Helm values or a `job` op.
+- **No templating language over the document** (no embedded Go templates/Jinja — a `{{ }}` pass would fight the template syntax specs embed as data in Argo/Helm manifests). The sanctioned form is sprig pipelines *inside* `${NAME|...}` references (hermetic function set; see `docs/dsl.md`): only the author-written pipeline is templated, values stay data, the document is never template-parsed. Complexity beyond that belongs in Helm values or a `job` op.
 
 ## Suggested order of attack
 

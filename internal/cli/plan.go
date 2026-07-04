@@ -24,7 +24,7 @@ const planStepTimeout = 30 * time.Second
 const diffStepTimeout = 2 * time.Minute
 
 func newPlanCommand(root *rootOptions) *cobra.Command {
-	flags := &specFlags{}
+	flags := &specFlags{redact: root.redact}
 	var offline, diff bool
 	cmd := &cobra.Command{
 		Use:   "plan",
@@ -42,7 +42,7 @@ func newPlanCommand(root *rootOptions) *cobra.Command {
 				return validationErr(err)
 			}
 
-			out := cmd.OutOrStdout()
+			out := root.redact.Wrap(cmd.OutOrStdout())
 			var executor *ops.Executor
 			if !offline {
 				clients, err := kube.New(root.kubeconfig, root.kubecontext)

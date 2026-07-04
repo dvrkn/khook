@@ -3,7 +3,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -40,18 +42,21 @@ type rootOptions struct {
 	logLevelSet bool
 
 	log *slog.Logger
+	// redact masks secret variable values (KHOOK_SECRET_*) in all output.
+	// Created empty here; specFlags.variables() registers values into it.
+	redact *redactor
 }
 
 // NewRootCommand builds the khook command tree.
 func NewRootCommand() *cobra.Command {
-	opts := &rootOptions{}
+	opts := &rootOptions{redact: &redactor{}}
 	root := &cobra.Command{
 		Use:           "khook",
 		Short:         "cloud-init for Kubernetes: initialize a fresh cluster from a declarative spec",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			log, err := newLogger(opts.logLevel, opts.logFormat)
+			log, err := newLogger(opts.logLevel, opts.logFormat, opts.redact.Wrap(os.Stderr))
 			if err != nil {
 				return validationErr(err)
 			}
@@ -74,10 +79,38 @@ func NewRootCommand() *cobra.Command {
 		newSchemaCommand(),
 		newVersionCommand(),
 	)
+	for _, sub := range root.Commands() {
+		redactRunE(sub, opts.redact)
+	}
 	return root
 }
 
-func newLogger(level, format string) (*slog.Logger, error) {
+// redactRunE wraps a command's RunE so error text leaving the cli package
+// (printed by main) is masked too — executor errors can embed manifest
+// content. The CodedError exit code survives the rewrite.
+func redactRunE(cmd *cobra.Command, r *redactor) {
+	orig := cmd.RunE
+	if orig == nil {
+		return
+	}
+	cmd.RunE = func(c *cobra.Command, args []string) error {
+		err := orig(c, args)
+		if err == nil {
+			return nil
+		}
+		masked := r.String(err.Error())
+		if masked == err.Error() {
+			return err
+		}
+		var coded *CodedError
+		if errors.As(err, &coded) {
+			return &CodedError{Code: coded.Code, Err: errors.New(masked)}
+		}
+		return errors.New(masked)
+	}
+}
+
+func newLogger(level, format string, w io.Writer) (*slog.Logger, error) {
 	var lvl slog.Level
 	if err := lvl.UnmarshalText([]byte(level)); err != nil {
 		return nil, fmt.Errorf("invalid --log-level %q", level)
@@ -85,9 +118,9 @@ func newLogger(level, format string) (*slog.Logger, error) {
 	handlerOpts := &slog.HandlerOptions{Level: lvl}
 	switch strings.ToLower(format) {
 	case "text":
-		return slog.New(slog.NewTextHandler(os.Stderr, handlerOpts)), nil
+		return slog.New(slog.NewTextHandler(w, handlerOpts)), nil
 	case "json":
-		return slog.New(slog.NewJSONHandler(os.Stderr, handlerOpts)), nil
+		return slog.New(slog.NewJSONHandler(w, handlerOpts)), nil
 	}
 	return nil, fmt.Errorf("invalid --log-format %q (want text or json)", format)
 }

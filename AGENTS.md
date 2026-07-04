@@ -31,8 +31,14 @@ Layout: `cmd/khook` (main), `internal/spec` (types/parse/validate/variables),
 - Name: `khook`; module path, binary, and docs all use it. Spec kind: `Khook`.
 - DSL shape: action key implies type (`helm:`/`apply:`/`delete:`/`wait:`/`rollout:`),
   `steps:` + `needs:`, top-level `defaults:` — details in `docs/dsl.md`.
-- Variables: `${VAR}` / `${VAR:-default}`; env vars consumed only with the
-  `KHOOK_VAR_` prefix (`--var-prefix` to override).
+- Variables: `${VAR}` / `${VAR:-default}` / `${VAR|sprig pipeline}` (hermetic
+  sprig set, values never template-parsed — see `docs/dsl.md`); env vars
+  consumed only with the `KHOOK_VAR_` prefix (`--var-prefix` to override).
+  `KHOOK_SECRET_` prefix (`--secret-prefix`) is the same plus output
+  redaction, including of pipeline-derived values.
+- Variables are **env-first**: values pre-exist in the environment (wrapper
+  script / CI / toolbox image fetches them); no in-spec cloud resolvers, no
+  host `exec:` step — `job:` is the escape hatch.
 - Dev/test platform: **k3d** (E2E tests spin up k3d clusters).
 - One binary, zero runtime deps: SDKs only, never shell out to kubectl/helm.
 

@@ -9,7 +9,7 @@ import (
 )
 
 func newValidateCommand(root *rootOptions) *cobra.Command {
-	flags := &specFlags{}
+	flags := &specFlags{redact: root.redact}
 	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Parse and validate a spec (variables resolved, DAG checked); no cluster access",
