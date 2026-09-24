@@ -7,9 +7,8 @@ description: Install khook, bootstrap a local k3d cluster, and write your first 
 
 # Getting started
 
-khook is a single static binary — the Kubernetes and Helm SDKs are compiled
-in, so there is nothing to install on the machine that runs it but khook
-itself. No `kubectl`, no `helm`, no runtime dependencies.
+khook is a single static binary with the Kubernetes and Helm SDKs compiled
+in. It does not need `kubectl`, `helm`, or any other runtime dependency.
 
 ## Install
 
@@ -21,8 +20,8 @@ $ go install github.com/dvrkn/khook/cmd/khook@latest
 
 ## Try it on a throwaway cluster
 
-[k3d](https://k3d.io/) gives you a disposable local cluster in seconds. Save
-this two-step spec as `quickstart.yaml`:
+Create a local cluster with [k3d](https://k3d.io/) and save this spec as
+`quickstart.yaml`:
 
 ```yaml
 # yaml-language-server: $schema=https://khook.io/schema/v1/khook.json
@@ -55,18 +54,17 @@ $ khook apply -f quickstart.yaml
 ✓ ingress-nginx (helm)  21.457s
 ```
 
-On a terminal each step is a live status line (pending → running →
-ok/failed/skipped, with spinner and elapsed time). In CI you get plain logs
-and a summary table instead, or `--output json` for machine-readable results.
+On a terminal, each step gets a live status line (pending, running, then
+ok/failed/skipped, with elapsed time). In CI, khook prints plain logs and a
+summary table, or JSON with `--output json`.
 
-Run the same command again: the namespace apply converges, the Helm release
-upgrades (or no-ops), and nothing breaks. Idempotent re-runs are the core
-promise — you can wire khook into every `terraform apply`.
+Run the command again: the namespace apply converges and the Helm release
+upgrades or no-ops. Re-runs are always safe.
 
 ## Your first spec
 
 A spec is a `khook.io/v1` document with a list of **steps**. Each step has
-exactly one action key — the key implies the type, there is no `type:` field:
+exactly one action key, and the key sets the step type:
 
 ```yaml
 # yaml-language-server: $schema=https://khook.io/schema/v1/khook.json
@@ -90,43 +88,38 @@ steps:
       atomic: true
 
   - name: all-ready
-    needs: [cilium]        # DAG edge — runs only after cilium succeeds
+    needs: [cilium]        # runs only after cilium succeeds
     wait:
       for: condition=Ready
       on: pods
       allNamespaces: true
 ```
 
-Steps are topologically sorted and run in **parallel levels**: everything
-with satisfied `needs` runs concurrently. Dependency cycles are a validation
-error — caught before anything touches the cluster.
+Steps are sorted topologically and run in **parallel levels**: every step
+whose `needs` are satisfied runs concurrently. A dependency cycle is a
+validation error.
 
-The first line wires your editor to the [JSON Schema](schema/v1/khook.json)
-for validation and autocomplete via yaml-language-server.
+The first line points yaml-language-server at the
+[JSON Schema](schema/v1/khook.json) for editor validation and autocomplete.
 
-## Validate, plan, then apply
-
-khook is designed to be safe to point at a real cluster:
+## Validate, plan, apply
 
 ```console
-$ khook validate -f bootstrap.yaml   # parse + validate only, no cluster access
-$ khook plan -f bootstrap.yaml       # read-only: predicts install/upgrade/no-op per step
-$ khook plan -f bootstrap.yaml --diff  # + rendered object diffs via server-side dry-run
+$ khook validate -f bootstrap.yaml       # parse and validate; no cluster access
+$ khook plan -f bootstrap.yaml           # read-only: install/upgrade/no-op per step
+$ khook plan -f bootstrap.yaml --diff    # plus object diffs via server-side dry-run
 $ khook apply -f bootstrap.yaml
 ```
 
-`plan` checks every step against the live cluster without mutating anything;
-`--offline` skips cluster access entirely for CI. `graph` emits the step DAG
-as Mermaid or Graphviz DOT for docs and review. Exit codes are distinct:
-`2` for validation problems, `1` for execution failures — see the
-[CLI reference](cli.md).
+`plan` never mutates the cluster; `--offline` skips cluster access entirely.
+`graph` prints the step DAG as Mermaid or Graphviz DOT. Exit code `2` means a
+validation error, `1` an execution failure. See the [CLI reference](cli.md).
 
 ## Variables and secrets
 
-Specs are parameterized with `${NAME}` / `${NAME:-default}` references,
-resolved before parsing. Values come from (in precedence order) `--set`,
-`--var-file`, `KHOOK_SECRET_*` env vars, `KHOOK_VAR_*` env vars, then in-spec
-defaults:
+`${NAME}` and `${NAME:-default}` are resolved before parsing. Sources, highest
+precedence first: `--set`, `--var-file`, `KHOOK_SECRET_*` env vars,
+`KHOOK_VAR_*` env vars, in-spec defaults.
 
 ```console
 $ export KHOOK_VAR_ENV=prod
@@ -134,20 +127,17 @@ $ export KHOOK_SECRET_ECR_TOKEN="$(aws ecr get-login-password)"
 $ khook apply -f bootstrap.yaml --set APP_NAME=payments
 ```
 
-Only prefixed environment variables are consumed, so unrelated environment
-(PATH, CI secrets) can't leak into specs. `KHOOK_SECRET_*` values are
-additionally redacted from all khook output. Values can be piped through
-[sprig](https://github.com/Masterminds/sprig) functions helm-style
-(`${APP_NAME | lower | trunc 63}`), and steps can be conditional with
-`when:` [CEL](https://cel.dev) expressions. The full rules are in the
-[DSL specification](dsl.md).
+Only prefixed env vars are read, so `PATH` and unrelated CI secrets never reach
+a spec. `KHOOK_SECRET_*` values are also redacted from khook's output. Values
+can go through [sprig](https://github.com/Masterminds/sprig) functions
+(`${APP_NAME | lower | trunc 63}`), and `when:` takes a [CEL](https://cel.dev)
+expression to make a step conditional. Details: [DSL specification](dsl.md).
 
-## Where to go next
+## Next
 
-- **[DSL specification](dsl.md)** — the normative field-level reference for
-  all seven step types, variables, pipelines, and `when:` conditions.
-- **[CLI reference](cli.md)** — commands, flags, variable precedence, exit
-  codes, execution semantics.
-- **[Examples](examples.md)** — from a two-step demo to a production-shaped
-  EKS bootstrap.
-- **[khook vs Terraform](vs-terraform.md)** — where each tool belongs.
+- **[DSL specification](dsl.md)**: field reference for the seven step types,
+  variables, pipelines, and `when:`.
+- **[CLI reference](cli.md)**: commands, flags, exit codes, execution
+  semantics.
+- **[Examples](examples.md)**: from a two-step demo to an EKS bootstrap.
+- **[khook vs Terraform](vs-terraform.md)**: where each tool fits.

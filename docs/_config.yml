@@ -5,9 +5,9 @@ title: khook
 tagline: Declarative bootstrap for Kubernetes
 description: >-
   khook is a single static binary that takes a freshly created Kubernetes
-  cluster from "API server answers" to "workloads can be deployed" — a
-  declarative, idempotent DAG of helm, apply, wait, and friends. No kubectl,
-  no helm binary, no bash.
+  cluster from "API server answers" to "workloads can be deployed" by running
+  a declarative, idempotent DAG of helm, apply, wait, and other steps. No
+  kubectl, helm, or shell scripts required.
 url: "https://khook.io"
 baseurl: ""
 lang: en
