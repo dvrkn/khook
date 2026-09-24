@@ -8,25 +8,24 @@ mermaid: true
 
 # Examples
 
-Every spec below lives in [`examples/`](https://github.com/dvrkn/khook/tree/main/examples)
-and validates against the [DSL specification](dsl.md) — they are the
-spec-by-example counterpart to the reference docs.
+All specs live in [`examples/`](https://github.com/dvrkn/khook/tree/main/examples)
+and validate against the [DSL specification](dsl.md).
 
-| Spec | What it shows |
+| Spec | Shows |
 |---|---|
-| [`simple.yaml`](https://github.com/dvrkn/khook/blob/main/examples/simple.yaml) | The two-step hello world: create a namespace with `apply:`, install ingress-nginx with `helm:`. The quickstart spec. |
-| [`with-variables.yaml`](https://github.com/dvrkn/khook/blob/main/examples/with-variables.yaml) | Variables end-to-end — `${NAME}` / `${NAME:-default}`, sprig pipelines, `KHOOK_VAR_*` / `KHOOK_SECRET_*` sources, and `when:` CEL conditions. |
-| [`multi-app.yaml`](https://github.com/dvrkn/khook/blob/main/examples/multi-app.yaml) | Two independent DAG branches (monitoring stack, sample app) that run in parallel levels. |
-| [`helm-depth.yaml`](https://github.com/dvrkn/khook/blob/main/examples/helm-depth.yaml) | Every chart-source form: `oci://` references with ECR auth, private HTTP(S) repos, local chart paths, values from a URL, and release uninstall via `delete:`. |
-| [`kubectl-depth.yaml`](https://github.com/dvrkn/khook/blob/main/examples/kubectl-depth.yaml) | The kubectl surface: apply+wait in one step (`waitFor`), jsonpath waits, in-place `patch:` (strategic/merge/json), and kustomize manifest sources. |
-| [`localenv.yaml`](https://github.com/dvrkn/khook/blob/main/examples/localenv.yaml) | A k3d/kind local dev environment: optional Cilium CNI, Argo CD at `argocd.localhost`, kube-prometheus-stack with Grafana at `grafana.localhost`. |
-| [`real-case.yaml`](https://github.com/dvrkn/khook/blob/main/examples/real-case.yaml) | The benchmark: a production-shaped EKS bootstrap — CNI swap to Cilium, external-secrets, ArgoCD handoff. |
-| [`lambda/`](https://github.com/dvrkn/khook/tree/main/examples/lambda) | The invocation contract for the planned Terraform/Lambda integration ([roadmap](https://github.com/dvrkn/khook/blob/main/ROADMAP.md)). |
+| [`simple.yaml`](https://github.com/dvrkn/khook/blob/main/examples/simple.yaml) | Create a namespace with `apply:`, install ingress-nginx with `helm:`. The quickstart spec. |
+| [`with-variables.yaml`](https://github.com/dvrkn/khook/blob/main/examples/with-variables.yaml) | `${NAME}` / `${NAME:-default}`, sprig pipelines, `KHOOK_VAR_*` / `KHOOK_SECRET_*`, and `when:` conditions. |
+| [`multi-app.yaml`](https://github.com/dvrkn/khook/blob/main/examples/multi-app.yaml) | Two independent branches (monitoring stack, sample app) running in parallel. |
+| [`helm-depth.yaml`](https://github.com/dvrkn/khook/blob/main/examples/helm-depth.yaml) | Every chart source: `oci://` with ECR auth, private HTTP(S) repos, local paths, values from a URL, uninstall via `delete:`. |
+| [`kubectl-depth.yaml`](https://github.com/dvrkn/khook/blob/main/examples/kubectl-depth.yaml) | `apply.waitFor`, jsonpath waits, `patch:` (strategic/merge/json), kustomize sources. |
+| [`localenv.yaml`](https://github.com/dvrkn/khook/blob/main/examples/localenv.yaml) | Local k3d/kind environment: optional Cilium, Argo CD at `argocd.localhost`, kube-prometheus-stack with Grafana at `grafana.localhost`. |
+| [`real-case.yaml`](https://github.com/dvrkn/khook/blob/main/examples/real-case.yaml) | Reference benchmark: EKS bootstrap with a CNI swap to Cilium, external-secrets, and Argo CD handoff. |
+| [`lambda/`](https://github.com/dvrkn/khook/tree/main/examples/lambda) | Invocation contract for the planned Terraform/Lambda integration ([roadmap](https://github.com/dvrkn/khook/blob/main/ROADMAP.md)). |
 
-## A local environment in one command
+## Local environment
 
-`localenv.yaml` stands up a complete local dev environment on k3d — ingress
-via k3d's bundled Traefik, Argo CD, and a monitoring stack:
+`localenv.yaml` sets up ingress (k3d's bundled Traefik), Argo CD, and a
+monitoring stack on k3d:
 
 ```console
 $ k3d cluster create localenv -p "80:80@loadbalancer"
@@ -34,14 +33,14 @@ $ khook apply -f examples/localenv.yaml
 ```
 
 Then open `http://argocd.localhost` and `http://grafana.localhost`.
-Cilium is off by default (k3d ships a working CNI); create the cluster
-without flannel and add `--set INSTALL_CILIUM=true` to swap it in — the
-spec's `when:` condition takes care of the rest.
+Cilium is off by default because k3d ships a working CNI. To use it, create
+the cluster without flannel and pass `--set INSTALL_CILIUM=true`; the spec's
+`when:` condition handles the rest.
 
-## Visualize any spec
+## Visualize a spec
 
-`khook graph` emits the step DAG for review — Mermaid by default (renders
-directly in GitHub Markdown), Graphviz DOT with `--format dot`:
+`khook graph` prints the step DAG as Mermaid (the default, rendered by GitHub
+Markdown) or Graphviz DOT (`--format dot`):
 
 ```console
 $ khook graph -f examples/multi-app.yaml
@@ -54,8 +53,7 @@ flowchart TD
     n2 --> n3
 ```
 
-Rendered, that output is the execution plan at a glance — the two branches
-run in parallel:
+Rendered:
 
 ```mermaid
 flowchart TD
@@ -67,5 +65,5 @@ flowchart TD
     n2 --> n3
 ```
 
-Steps excluded by a `when:` condition are drawn dashed and labeled `skipped`,
-so the graph reflects the run you'd actually get with those variables.
+Steps excluded by `when:` are drawn dashed and labeled `skipped`, so the graph
+matches the run you would get with the same variables.
