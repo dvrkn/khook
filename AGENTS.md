@@ -42,7 +42,7 @@ Layout: `cmd/khook` (main), `internal/spec` (types/parse/validate/variables),
 - Dev/test platform: **k3d** (E2E tests spin up k3d clusters).
 - One binary, zero runtime deps: SDKs only, never shell out to kubectl/helm.
 - Binary size: release builds go through `make build` (`CGO_ENABLED=0`,
-  `-trimpath`, `-ldflags "-s -w"` + version stamping) → ~60 MB. The floor is
+  `-trimpath`, `-ldflags "-s -w"` + version stamping) → ~68 MB. The floor is
   structural: helm v4's `pkg/action`/`pkg/kube` link the full typed
   `k8s.io/client-go` clientset and all of `k8s.io/api`, and `text/template`
   (helm's render engine) calls `reflect.MethodByName`, which disables linker

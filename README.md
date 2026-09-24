@@ -11,7 +11,7 @@ binary, no bash.
 
 [![CI](https://github.com/dvrkn/khook/actions/workflows/ci.yml/badge.svg)](https://github.com/dvrkn/khook/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Kubernetes SDK](https://img.shields.io/badge/client--go-v0.36-326CE5?logo=kubernetes&logoColor=white)](go.mod)
+[![Kubernetes SDK](https://img.shields.io/badge/client--go-v0.37-326CE5?logo=kubernetes&logoColor=white)](go.mod)
 [![Helm SDK](https://img.shields.io/badge/helm-v4-0F1689?logo=helm&logoColor=white)](go.mod)
 [![Status](https://img.shields.io/badge/status-pre--release-orange)](ROADMAP.md)
 
